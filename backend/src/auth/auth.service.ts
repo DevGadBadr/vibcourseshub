@@ -3,7 +3,6 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SignupDto } from './dto/signup.dto';
 import { TokensService } from './tokens.service';
-gogo
 
 const SALT_ROUNDS = 12;
 
