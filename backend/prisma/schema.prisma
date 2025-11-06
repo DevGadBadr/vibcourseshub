@@ -59,6 +59,9 @@ model User {
   // Courses this user teaches
   coursesTaught Course[] @relation("CourseInstructor")
 
+  // 🔐 New: per-device sessions (recommended)
+  sessions Session[]
+
   // ✅ Back relation to Enrollment — MUST match the name used on Enrollment.user
   enrollments Enrollment[] @relation("UserEnrollments")
 
@@ -68,6 +71,33 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Session {
+  id     Int  @id @default(autoincrement())
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // store ONLY a hash of the refresh token
+  refreshTokenHash String
+  // absolute expiry for the RT (e.g., 14d)
+  refreshTokenExp  DateTime
+
+  // rotation / revocation
+  revokedAt DateTime?
+  // optional jti if you embed it into the JWT and want uniqueness
+  jti       String?   @unique
+
+  // helpful metadata
+  userAgent String?
+  device    String?
+  ip        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([refreshTokenExp])
 }
 
 model Course {

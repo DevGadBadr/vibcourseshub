@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -6,7 +7,7 @@ import { EmailVerificationModule } from './emailVerification/email.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 
 @Module({
-  imports: [PrismaModule, EmailVerificationModule, AuthModule],
+  imports: [PrismaModule, EmailVerificationModule, AuthModule,JwtModule.register({})],
   controllers: [AppController],
   providers: [AppService],
 })

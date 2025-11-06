@@ -1,8 +1,9 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { EmailVerificationService } from '../emailVerification/email.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SignupDto } from './dto/signup.dto';
+import { TokensService } from './tokens.service';
+gogo
 
 const SALT_ROUNDS = 12;
 
@@ -10,7 +11,7 @@ const SALT_ROUNDS = 12;
 export class AuthService {
   constructor(
     private prisma: PrismaService,
-    private emailVerification: EmailVerificationService,
+    private tokens: TokensService,
   ) {}
 
   async signup(dto: SignupDto) {
@@ -39,4 +40,5 @@ export class AuthService {
       throw new BadRequestException('Could not create user');
     }
   }
+  
 }
