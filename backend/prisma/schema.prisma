@@ -1,0 +1,132 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+enum UserRole {
+  TRAINEE
+  INSTRUCTOR
+  ADMIN
+}
+
+enum CourseLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  EXPIRED
+  CANCELED
+  REFUNDED
+  TRIAL
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(TRAINEE)
+
+  name      String?
+  avatarUrl String?
+  locale    String?
+  timezone  String?
+
+  isEmailVerified        Boolean   @default(false)
+  emailVerifiedAt        DateTime?
+  passwordResetToken     String?   @unique
+  passwordResetExpiresAt DateTime?
+
+  lastLoginAt      DateTime?
+  loginCount       Int       @default(0)
+  failedLoginCount Int       @default(0)
+  isActive         Boolean   @default(true)
+
+  // Courses this user teaches
+  coursesTaught Course[] @relation("CourseInstructor")
+
+  // ✅ Back relation to Enrollment — MUST match the name used on Enrollment.user
+  enrollments Enrollment[] @relation("UserEnrollments")
+
+  // Email verification (new)
+  verificationTokenHash      String?
+  verificationTokenExpiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Course {
+  id           Int     @id @default(autoincrement())
+  slug         String  @unique
+  title        String
+  description  String?
+  instructorId Int
+  instructor   User    @relation("CourseInstructor", fields: [instructorId], references: [id])
+
+  durationSeconds Int?
+  level           CourseLevel?
+  language        String?
+  thumbnailUrl    String?
+  promoUrl        String?
+  contentLinks    Json?
+
+  averageRating Decimal? @db.Decimal(3, 2)
+  ratingCount   Int      @default(0)
+
+  isPublished Boolean   @default(false)
+  publishedAt DateTime?
+
+  // ✅ Back relation to Enrollment — MUST match the name used on Enrollment.course
+  enrollments Enrollment[] @relation("CourseEnrollments")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([instructorId])
+  @@index([isPublished, publishedAt])
+}
+
+model Enrollment {
+  id       Int              @id @default(autoincrement())
+  userId   Int
+  courseId Int
+  status   EnrollmentStatus @default(ACTIVE)
+
+  accessFrom  DateTime  @default(now())
+  accessUntil DateTime?
+
+  priceCents    Int?
+  currency      String?
+  orderId       String? @unique
+  paymentMethod String?
+
+  progressPct  Decimal?  @db.Decimal(5, 2)
+  lastAccessAt DateTime?
+  notes        String?
+
+  // ✅ Relation names set here…
+  user   User   @relation("UserEnrollments", fields: [userId], references: [id])
+  course Course @relation("CourseEnrollments", fields: [courseId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, courseId])
+  @@index([userId, status])
+  @@index([courseId, status])
+}
