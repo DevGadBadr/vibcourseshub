@@ -30,10 +30,7 @@ export class AuthService {
           id: true, email: true, name: true, role: true, createdAt: true,
         },
       });
-      // Fire-and-forget verification email; don't block user creation on email issues
-      this.emailVerification
-        .requestVerification(user.email)
-        .catch(() => void 0);
+
       return user;
     } catch (e: any) {
       if (e && typeof e === 'object' && 'code' in e && (e as any).code === 'P2002') {

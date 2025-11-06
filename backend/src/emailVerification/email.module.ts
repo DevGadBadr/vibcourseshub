@@ -8,5 +8,6 @@ import { EmailVerificationService } from './email.service.js';
   imports: [PrismaModule, CacheModule.register()],
   controllers: [EmailVerificationController],
   providers: [EmailVerificationService],
+  exports: [EmailVerificationService],
 })
 export class EmailVerificationModule {}
