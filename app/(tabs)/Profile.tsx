@@ -27,10 +27,10 @@ export default function TabTwoScreen() {
           style={{
             fontFamily: Fonts.rounded,
           }}>
-          Explore
+            Gado
         </ThemedText>
       </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
+      <ThemedText>This Gado includes example code to help you get started.</ThemedText>
       <Collapsible title="File-based routing">
         <ThemedText>
           This app has two screens:{' '}
