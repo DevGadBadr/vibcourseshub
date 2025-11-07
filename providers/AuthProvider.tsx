@@ -21,7 +21,7 @@ const storage = {
 
 export type User = { id: number; email: string; name?: string | null; role: string; isEmailVerified?: boolean } | null;
 
-const API_URL = (Constants.expoConfig?.extra as any)?.apiUrl || process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+const API_URL = (Constants.expoConfig?.extra as any)?.apiUrl || process.env.EXPO_PUBLIC_API_URL || 'https://devgadbadr.com/vibapi';
 
 async function api<T>(path: string, init?: RequestInit & { auth?: boolean }) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
