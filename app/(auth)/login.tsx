@@ -15,10 +15,30 @@ export default function LoginScreen() {
       setError('Email and password are required');
       return;
     }
+    // quick client-side email format check to give immediate feedback
+    const emailOk = /.+@.+\..+/.test(email.trim());
+    if (!emailOk) {
+      setError('Please enter correct email address.');
+      return;
+    }
     try {
       await signIn(email.trim(), password);
     } catch (e: any) {
-      setError(e.message || 'Login failed');
+      // Friendly fallback handling if message not already normalized
+      const raw = e?.message || '';
+      if (/incorrect email or password/i.test(raw)) {
+        setError('Incorrect email or password.');
+      } else if (/password must be at least 8/i.test(raw)) {
+        setError('Password must be at least 8 characters.');
+      } else if (/enter correct email address/i.test(raw) || /email.+valid/i.test(raw)) {
+        setError('Please enter correct email address.');
+      } else if (/email is required/i.test(raw)) {
+        setError('Email is required.');
+      } else if (/password is required/i.test(raw)) {
+        setError('Password is required.');
+      } else {
+        setError(raw || 'Login failed');
+      }
     }
   };
 

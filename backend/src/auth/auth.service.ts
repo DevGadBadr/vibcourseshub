@@ -50,6 +50,7 @@ export class AuthService {
 
     const accessToken = await this.tokens.signAccess({
       sub: user.id,
+      sid: session.id,
       email: user.email,
       role: user.role,
     });
@@ -57,7 +58,7 @@ export class AuthService {
     const refreshToken = await this.tokens.signRefresh({
       sub: user.id,
       sid: session.id,
-      jti: session.jti,
+      jti: session.jti || undefined,
     });
 
     const refreshTokenHash = await argon2.hash(refreshToken);
@@ -98,11 +99,11 @@ export class AuthService {
     if (!user || !user.isActive) throw new ForbiddenException('User disabled');
 
     const accessToken = await this.tokens.signAccess({
-      sub: user.id, email: user.email, role: user.role,
+      sub: user.id, sid: session.id, email: user.email, role: user.role,
     });
 
     const newRefreshToken = await this.tokens.signRefresh({
-      sub: user.id, sid: session.id, jti: session.jti,
+      sub: user.id, sid: session.id, jti: session.jti || undefined,
     });
 
     await this.prisma.session.update({

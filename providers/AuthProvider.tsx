@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { router } from 'expo-router';
+import { router, useSegments } from 'expo-router';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 // Storage abstraction (web: localStorage, native: in-memory fallback)
@@ -22,6 +22,30 @@ const storage = {
 export type User = { id: number; email: string; name?: string | null; role: string; isEmailVerified?: boolean } | null;
 
 const API_URL = (Constants.expoConfig?.extra as any)?.apiUrl || process.env.EXPO_PUBLIC_API_URL || 'https://devgadbadr.com/vibapi';
+
+class ApiError extends Error {
+  status: number;
+  details?: any;
+  constructor(message: string, status: number, details?: any) {
+    super(message);
+    this.status = status;
+    this.details = details;
+  }
+}
+
+function toHumanValidation(messages: unknown): string | null {
+  if (!Array.isArray(messages)) return null;
+  const mapOne = (m: string) => {
+    const msg = m.toLowerCase();
+    if (msg.includes('email must be an email')) return 'Please enter correct email address.';
+    if (msg.includes('password must be longer than or equal to 8 characters')) return 'Password must be at least 8 characters.';
+    if (msg.includes('password should not be empty')) return 'Password is required.';
+    if (msg.includes('email should not be empty')) return 'Email is required.';
+    // Fallback: capitalize first letter
+    return m.charAt(0).toUpperCase() + m.slice(1);
+  };
+  return messages.map(mapOne).join('\n');
+}
 
 async function api<T>(path: string, init?: RequestInit & { auth?: boolean }) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -49,8 +73,26 @@ async function api<T>(path: string, init?: RequestInit & { auth?: boolean }) {
     return (await retry.json()) as T;
   }
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || res.statusText);
+    // Try to parse JSON error for friendly messages
+    let payload: any = null;
+    try {
+      payload = await res.json();
+    } catch {
+      // ignore
+    }
+
+    const validationMsg = toHumanValidation(payload?.message);
+    let message: string | undefined = validationMsg || payload?.message;
+
+    // Specific friendly messages
+    if (!message && res.status === 403) message = 'You do not have permission to perform this action.';
+    // Login invalid credentials
+    if (res.status === 403 && (payload?.message === 'Invalid credentials' || String(payload?.message).toLowerCase().includes('invalid credentials'))) {
+      message = 'Incorrect email or password.';
+    }
+    if (!message) message = res.statusText || 'Request failed';
+
+    throw new ApiError(message, res.status, payload);
   }
   if (res.status === 204) return undefined as unknown as T;
   return (await res.json()) as T;
@@ -72,6 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User>(null);
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const segments = useSegments();
 
   const loadSession = useCallback(async () => {
     try {
@@ -95,6 +138,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })();
   }, [loadSession]);
 
+  // Route guard: keep unauthenticated users out of tabs and authenticated users out of auth screens.
+  useEffect(() => {
+    if (initializing) return;
+    const inAuthGroup = segments[0] === '(auth)';
+    if (!user && !inAuthGroup) {
+      router.replace('/(auth)/login' as any);
+    } else if (user && inAuthGroup) {
+      router.replace('/(tabs)' as any);
+    }
+  }, [segments, user, initializing]);
+
   const signIn = useCallback(async (email: string, password: string) => {
     setLoading(true);
     try {
@@ -116,9 +170,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // returns created user (no tokens) per backend
       await api('/auth/signup', { method: 'POST', body: JSON.stringify(payload) });
-      // After signup, prompt verification screen
-  router.replace('/(auth)/verify-email' as any);
-  return 'verify' as const;
+
+      // Trigger email verification for the just-signed-up user
+      try {
+        await api('/email-verification/request', {
+          method: 'POST',
+          body: JSON.stringify({ email: payload.email }),
+        });
+      } catch (e) {
+        // Non-fatal: still navigate to verification screen
+        console.warn('Failed to send verification email:', e);
+      }
+
+      // keep email so the verify screen can show/resend
+      await storage.setItem('pendingVerifyEmail', payload.email);
+
+      // After signup, prompt verification screen (include email for convenience)
+      router.replace({ pathname: '/(auth)/verify-email' as any, params: { email: payload.email } } as any);
+      return 'verify' as const;
     } finally {
       setLoading(false);
     }
