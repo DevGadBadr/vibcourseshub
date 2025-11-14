@@ -7,7 +7,14 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   // Enable CORS for local web client
   app.enableCors({
-    origin: ['http://localhost:8081', 'http://127.0.0.1:8081', 'http://devgadbadr.com:8081'],
+    origin: [
+      'http://localhost:8081',
+      'http://127.0.0.1:8081',
+      'http://devgadbadr.com:8081',
+      'https://devgadbadr.com:8081',
+      'https://localhost:8081',
+      'https://127.0.0.1:8081',
+    ],
     credentials: true,
   });
   app.useGlobalPipes(

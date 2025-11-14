@@ -1,6 +1,7 @@
 import { useAuth } from '@/providers/AuthProvider';
+import { validateEmail } from '@/utils/email';
 import { Link } from 'expo-router';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 export default function SignupScreen() {
@@ -12,10 +13,12 @@ export default function SignupScreen() {
 
   const onSubmit = async () => {
     setError(null);
-    if (!email || !password) {
-      setError('Email and password are required');
+    const emailCheck = validateEmail(email);
+    if (!emailCheck.ok) {
+      setError(emailCheck.suggestion ? `${emailCheck.reason}. Did you mean ${emailCheck.suggestion}?` : emailCheck.reason || 'Invalid email');
       return;
     }
+    if (!password) { setError('Password is required'); return; }
     if (password.length < 8) {
       setError('Password must be at least 8 characters');
       return;
@@ -52,7 +55,7 @@ export default function SignupScreen() {
         value={name}
         onChangeText={setName}
       />
-      <Pressable disabled={loading} onPress={onSubmit} style={styles.button}>
+      <Pressable disabled={loading} onPress={onSubmit} style={[styles.button, loading && { opacity: 0.6 }] }>
         <Text style={styles.buttonText}>{loading ? 'Loading...' : 'Sign up'}</Text>
       </Pressable>
       <View style={styles.row}>

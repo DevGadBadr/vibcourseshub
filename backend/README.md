@@ -25,6 +25,35 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+### Authenticated Course Listing
+
+New endpoint: `GET /courses/mine` (requires `Authorization: Bearer <accessToken>`).
+
+Returns only published courses where the authenticated user (derived from the JWT `sub` claim) has an active enrollment. The user id is never taken from a query or route parameter, preventing privilege escalation attempts (e.g. guessing other user ids). Response shape mirrors the public list endpoint:
+
+```jsonc
+{
+  "data": [
+    {
+      "id": 1,
+      "slug": "intro-to-x",
+      "title": "Intro to X",
+      "description": "…",
+      "thumbnailUrl": "https://…",
+      "averageRating": 5,
+      "ratingCount": 0,
+      "instructor": { "id": 10, "name": "Alice", "email": "alice@example.com" }
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+Security measures:
+- Enrollment filtered server-side via `enrollments.some({ userId, status: 'ACTIVE' })`.
+- User id sourced exclusively from validated JWT payload (`sub`).
+- Requires active, non-revoked session (see JWT strategy & session checks).
+
 ## Project setup
 
 ```bash
@@ -43,6 +72,17 @@ $ pnpm run start:dev
 # production mode
 $ pnpm run start:prod
 ```
+
+### Development extras
+
+- Default port: the app listens on port `3010` (controlled by `PORT` env var in `src/main.ts`).
+- Seed example data:
+
+```bash
+$ pnpm run seed:courses
+```
+
+This will create an instructor and a couple of published example courses. After seeding, `GET /courses` will return them.
 
 ## Run tests
 

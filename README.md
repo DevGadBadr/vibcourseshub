@@ -25,6 +25,33 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
+## Connect frontend to the backend API
+
+The app reads the API base URL from the `EXPO_PUBLIC_API_URL` environment variable (or `expo.extra.apiUrl` if provided). For local development with the included NestJS backend:
+
+- Start the backend (listens on port `3010` by default)
+- Start Expo with the env var set, for example:
+
+```bash
+# web
+EXPO_PUBLIC_API_URL=http://localhost:3010 npx expo start --web
+
+# native (Metro dev server)
+EXPO_PUBLIC_API_URL=http://localhost:3010 npx expo start
+```
+
+On Android emulators, you may need to use `http://10.0.2.2:3010` instead of `localhost`.
+
+## Reordering courses (drag & drop)
+
+- Web: As an admin, open the Explore tab, click "Reorder" to enable drag-and-drop of the course grid. Drop to rearrange; order is saved immediately.
+- Mobile (iOS/Android): As an admin, tap "Reorder" on the Explore screen, then long-press a course card to drag it. Release to drop; order is saved automatically. Tap "Done" to exit.
+
+Implementation notes:
+- Backend stores an integer `position` on `Course` and orders lists by `position` ascending.
+- A protected endpoint `PUT /courses/reorder/bulk` accepts `{ items: [{ id, position }] }` and updates positions in a transaction.
+- Frontend uses `@hello-pangea/dnd` on web and `react-native-draggable-flatlist` on native.
+
 ## Get a fresh project
 
 When you're ready, run:

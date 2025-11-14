@@ -1,7 +1,6 @@
-import { useAuth } from '@/providers/AuthProvider';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 async function resend(email: string) {
   const res = await fetch((process.env.EXPO_PUBLIC_API_URL || (global as any).API_URL || 'https://devgadbadr.com/vibapi') + '/email-verification/resend', {
@@ -13,12 +12,24 @@ async function resend(email: string) {
   return res.json();
 }
 
+async function verify(email: string, token: string) {
+  const res = await fetch((process.env.EXPO_PUBLIC_API_URL || (global as any).API_URL || 'https://devgadbadr.com/vibapi') + '/email-verification/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, token }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export default function VerifyEmailScreen() {
   const params = useLocalSearchParams();
   const [email, setEmail] = useState<string | null>(typeof params.email === 'string' ? params.email : null);
-  const [status, setStatus] = useState<string>('A verification link has been sent.');
+  const [token, setToken] = useState<string | null>(typeof params.token === 'string' ? params.token : null);
+  const [status, setStatus] = useState<string>('Waiting for verification...');
   const [cooldown, setCooldown] = useState<number>(0);
-  const { loading } = useAuth();
+  const [verifying, setVerifying] = useState(false);
+  const [verified, setVerified] = useState(false);
 
   useEffect(() => {
     if (!email) {
@@ -38,6 +49,26 @@ export default function VerifyEmailScreen() {
     return () => clearInterval(id);
   }, [cooldown]);
 
+  // Auto-verify if email + token present from link
+  useEffect(() => {
+    (async () => {
+      if (email && token) {
+        setVerifying(true);
+        try {
+          await verify(email, token);
+          setStatus('Your email has been verified. You can now log in.');
+          setVerified(true);
+        } catch (e: any) {
+          setStatus(e.message || 'Verification failed or link expired. You can request a new email.');
+        } finally {
+          setVerifying(false);
+        }
+      } else {
+        setStatus('A verification link has been sent. Check your email.');
+      }
+    })();
+  }, [email, token]);
+
   const onResend = async () => {
     if (!email || cooldown > 0) return;
     try {
@@ -51,14 +82,21 @@ export default function VerifyEmailScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Verify your email</Text>
-      <Text style={styles.text}>
-        {email ? `We sent a verification link to ${email}. Click the link to activate your account.` : 'We sent you a verification link. Verify your email, then log in.'}
-      </Text>
+      <Text style={styles.title}>Email Verification</Text>
+      {email && !token && (
+        <Text style={styles.text}>We sent a verification link to {email}. Open it to finish verifying.</Text>
+      )}
+      {email && token && (
+        <Text style={styles.text}>Verifying {email}...</Text>
+      )}
+      {!email && <Text style={styles.text}>Check your inbox for the verification link.</Text>}
       <Text style={styles.status}>{status}</Text>
-      <Pressable style={[styles.button, cooldown > 0 && { opacity: 0.6 }]} disabled={cooldown > 0} onPress={onResend}>
-        <Text style={styles.buttonText}>{cooldown > 0 ? `Resend (${cooldown}s)` : 'Resend email'}</Text>
-      </Pressable>
+      {verifying && <ActivityIndicator />}
+      {!verified && (
+        <Pressable style={[styles.button, cooldown > 0 && { opacity: 0.6 }]} disabled={cooldown > 0} onPress={onResend}>
+          <Text style={styles.buttonText}>{cooldown > 0 ? `Resend (${cooldown}s)` : 'Resend email'}</Text>
+        </Pressable>
+      )}
       <Pressable style={[styles.button, { backgroundColor: '#111' }]} onPress={() => router.replace('/(auth)/login' as any)}>
         <Text style={styles.buttonText}>Go to log in</Text>
       </Pressable>

@@ -9,7 +9,11 @@ import { JwtStrategy } from './strategies/jwt.strategy.js';
 import { TokensService } from './tokens.service.js';
 
 @Module({
-  imports: [PrismaModule, EmailVerificationModule, PassportModule.register({ defaultStrategy: 'jwt' })],
+  imports: [
+    PrismaModule,
+    EmailVerificationModule,
+    PassportModule.register({ defaultStrategy: 'jwt' }),
+  ],
   controllers: [AuthController],
   providers: [AuthService, TokensService, JwtService, JwtStrategy],
 })

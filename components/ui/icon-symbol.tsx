@@ -20,6 +20,14 @@ const MAPPING = {
   'chevron.right': 'chevron-right',
   'camera.fill': 'camera-alt',
   'book.fill': 'book',
+  // Added for enhanced tabs
+  'sparkles': 'auto-awesome',
+  'person.crop.circle': 'account-circle',
+  'person.2': 'group',
+  'person.2.badge.gearshape': 'supervisor-account',
+  'star.fill': 'star',
+  'star.lefthalf.fill': 'star-half',
+  'star': 'star-outline',
 } as IconMapping;
 
 /**

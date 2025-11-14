@@ -1,25 +1,20 @@
+import { appStorage as storage } from '@/utils/storage';
 import Constants from 'expo-constants';
 import { router, useSegments } from 'expo-router';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { AppState, Platform } from 'react-native';
 
-// Storage abstraction (web: localStorage, native: in-memory fallback)
-const memStore: Record<string, string | null> = {};
-const storage = {
-  async getItem(key: string) {
-    if (typeof localStorage !== 'undefined') return localStorage.getItem(key);
-    return memStore[key] ?? null;
-  },
-  async setItem(key: string, value: string) {
-    if (typeof localStorage !== 'undefined') return localStorage.setItem(key, value);
-    memStore[key] = value;
-  },
-  async removeItem(key: string) {
-    if (typeof localStorage !== 'undefined') return localStorage.removeItem(key);
-    memStore[key] = null;
-  },
-};
-
-export type User = { id: number; email: string; name?: string | null; role: string; isEmailVerified?: boolean } | null;
+export type User = {
+  id: number;
+  email: string;
+  name?: string | null;
+  role: string;
+  isEmailVerified?: boolean;
+  createdAt?: string;
+  loginCount?: number;
+  avatarUrl?: string | null;
+  emailVerifiedAt?: string | null;
+} | null;
 
 const API_URL = (Constants.expoConfig?.extra as any)?.apiUrl || process.env.EXPO_PUBLIC_API_URL || 'https://devgadbadr.com/vibapi';
 
@@ -138,6 +133,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })();
   }, [loadSession]);
 
+  // Refresh when app returns to foreground (helps reflect verification changes without manual actions)
+  useEffect(() => {
+    let mounted = true;
+    const lastRef = { t: 0 };
+    const sub = AppState.addEventListener('change', async (state) => {
+      if (!mounted) return;
+      if (state === 'active') {
+        const now = Date.now();
+        // throttle to avoid excessive calls when bouncing between states
+        if (now - lastRef.t > 30_000) {
+          lastRef.t = now;
+          try { await loadSession(); } catch {}
+        }
+      }
+    });
+    return () => { mounted = false; sub.remove(); };
+  }, [loadSession]);
+
   // Route guard: keep unauthenticated users out of tabs and authenticated users out of auth screens.
   useEffect(() => {
     if (initializing) return;
@@ -154,7 +167,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const data = await api<{ accessToken: string; refreshToken: string; user: User }>(
         '/auth/login',
-        { method: 'POST', body: JSON.stringify({ email, password }) }
+        { method: 'POST', body: JSON.stringify({ email, password, device: Platform.OS }) }
       );
       await storage.setItem('accessToken', data.accessToken);
       await storage.setItem('refreshToken', data.refreshToken);

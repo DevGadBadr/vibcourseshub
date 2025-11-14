@@ -1,5 +1,22 @@
 // src/auth/auth.controller.ts
-import { BadRequestException, Body, Controller, Get, HttpCode, Ip, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Ip,
+  Post,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { existsSync, mkdirSync } from 'fs';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
 import { GetUser } from '../common/decorators/get-user.decorator';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -50,5 +67,43 @@ export class AuthController {
       throw new BadRequestException('Refresh token required.');
     }
     return this.authService.logout(userId, body.refreshToken);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('avatar')
+  @UseInterceptors(
+    FileInterceptor('avatar', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const dir = join(process.cwd(), 'uploads', 'avatars');
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+          cb(null, dir);
+        },
+        filename: (req: any, file, cb) => {
+          const userId = req.user?.sub || 'u';
+          const ext = extname(file.originalname || '').toLowerCase() || '.jpg';
+          const name = `${userId}_${Date.now()}${ext}`;
+          cb(null, name);
+        },
+      }),
+      fileFilter: (req, file, cb) => {
+        const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowed.includes(file.mimetype)) return cb(new BadRequestException('Invalid image type'), false);
+        cb(null, true);
+      },
+      limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+    }),
+  )
+  async uploadAvatar(@GetUser() user: any, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file uploaded');
+    const relPath = `/uploads/avatars/${file.filename}`;
+    const updated = await this.authService.updateAvatar(user.sub, relPath);
+    return updated;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('avatar')
+  async deleteAvatar(@GetUser() user: any) {
+    return this.authService.removeAvatar(user.sub);
   }
 }

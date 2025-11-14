@@ -1,13 +1,20 @@
 import { useAuth } from '@/providers/AuthProvider';
-import { Link } from 'expo-router';
-import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Link, router } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 export default function LoginScreen() {
-  const { signIn, loading } = useAuth();
+  const { signIn, loading, user, initializing } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Immediate redirect BEFORE rendering form to avoid flicker
+  useEffect(() => {
+    if (!initializing && user) {
+      router.replace('/(tabs)' as any);
+    }
+  }, [user, initializing]);
 
   const onSubmit = async () => {
     setError(null);
@@ -41,6 +48,15 @@ export default function LoginScreen() {
       }
     }
   };
+
+  // While initializing OR already authenticated, render lightweight placeholder
+  if (initializing || user) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -76,6 +92,7 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 24, gap: 12, maxWidth: 480, alignSelf: 'center', width: '100%', justifyContent: 'center' },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 24, fontWeight: '600', marginBottom: 8 },
   input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 10 },
   button: { backgroundColor: '#0b5cff', paddingVertical: 12, borderRadius: 6, alignItems: 'center', marginTop: 4 },

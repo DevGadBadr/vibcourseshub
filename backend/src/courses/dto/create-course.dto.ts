@@ -1,0 +1,57 @@
+import { CourseLevel } from '@prisma/client';
+import {
+  IsBoolean,
+  IsEmail,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUrl,
+  MinLength,
+} from 'class-validator';
+
+export class CreateCourseDto {
+  @IsString()
+  @MinLength(4)
+  title!: string;
+
+  @IsString()
+  @MinLength(4)
+  slug!: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsInt()
+  instructorId?: number; // Optionally select by id
+
+  @IsOptional()
+  @IsEmail()
+  instructorEmail?: string; // Or by email; will be created as INSTRUCTOR if missing
+
+  @IsOptional()
+  @IsInt()
+  durationSeconds?: number;
+
+  @IsOptional()
+  @IsEnum(CourseLevel)
+  level?: CourseLevel;
+
+  @IsOptional()
+  @IsString()
+  language?: string;
+
+  @IsOptional()
+  @IsUrl()
+  thumbnailUrl?: string;
+
+  @IsOptional()
+  @IsUrl()
+  promoUrl?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  isPublished?: boolean;
+}

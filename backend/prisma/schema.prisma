@@ -18,6 +18,7 @@ enum UserRole {
   TRAINEE
   INSTRUCTOR
   ADMIN
+  MANAGER
 }
 
 enum CourseLevel {
@@ -120,6 +121,12 @@ model Course {
   isPublished Boolean   @default(false)
   publishedAt DateTime?
 
+  // Highlighting in listings
+  isFeatured Boolean @default(false)
+
+  // Ordering in lists
+  position   Int @default(0)
+
   // ✅ Back relation to Enrollment — MUST match the name used on Enrollment.course
   enrollments Enrollment[] @relation("CourseEnrollments")
 
@@ -128,6 +135,7 @@ model Course {
 
   @@index([instructorId])
   @@index([isPublished, publishedAt])
+  @@index([position])
 }
 
 model Enrollment {

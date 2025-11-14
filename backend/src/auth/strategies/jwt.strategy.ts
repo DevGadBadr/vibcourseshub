@@ -17,11 +17,15 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     if (!payload.sid) {
       throw new UnauthorizedException('Session missing');
     }
-    const session = await this.prisma.session.findUnique({ where: { id: Number(payload.sid) } });
+    const session = await this.prisma.session.findUnique({
+      where: { id: Number(payload.sid) },
+    });
     if (!session || session.revokedAt || session.refreshTokenExp < new Date()) {
       throw new UnauthorizedException('Session invalid');
     }
-    const user = await this.prisma.user.findUnique({ where: { id: Number(payload.sub) } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: Number(payload.sub) },
+    });
     if (!user || !user.isActive) {
       throw new UnauthorizedException('User inactive');
     }
