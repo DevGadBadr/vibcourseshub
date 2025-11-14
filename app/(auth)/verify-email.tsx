@@ -30,6 +30,7 @@ export default function VerifyEmailScreen() {
   const [cooldown, setCooldown] = useState<number>(0);
   const [verifying, setVerifying] = useState(false);
   const [verified, setVerified] = useState(false);
+  const RESEND_COOLDOWN = 60; // seconds; should match backend default unless overridden
 
   useEffect(() => {
     if (!email) {
@@ -71,13 +72,17 @@ export default function VerifyEmailScreen() {
 
   const onResend = async () => {
     if (!email || cooldown > 0) return;
-    try {
-      await resend(email);
-      setStatus('Verification email resent. Check your inbox.');
-      setCooldown(60); // match backend default cooldown seconds
-    } catch (e: any) {
-      setStatus(e.message || 'Could not resend email.');
-    }
+    // Update UI immediately and fire request in background (non-blocking)
+    setStatus('Verification email resent. Check your inbox.');
+    setCooldown(RESEND_COOLDOWN);
+    (async () => {
+      try {
+        await resend(email);
+      } catch (e: any) {
+        // Log but don't block UX; provide soft feedback
+        console.warn('Resend failed:', e?.message || e);
+      }
+    })();
   };
 
   return (
@@ -93,9 +98,19 @@ export default function VerifyEmailScreen() {
       <Text style={styles.status}>{status}</Text>
       {verifying && <ActivityIndicator />}
       {!verified && (
-        <Pressable style={[styles.button, cooldown > 0 && { opacity: 0.6 }]} disabled={cooldown > 0} onPress={onResend}>
-          <Text style={styles.buttonText}>{cooldown > 0 ? `Resend (${cooldown}s)` : 'Resend email'}</Text>
-        </Pressable>
+        <View style={styles.inlineRow}>
+          <Text style={styles.inlineText}>Didn't get it? </Text>
+          <Pressable disabled={cooldown > 0} onPress={onResend}>
+            <Text
+              style={[
+                styles.link,
+                cooldown > 0 && styles.linkDisabled,
+              ]}
+            >
+              {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend'}
+            </Text>
+          </Pressable>
+        </View>
       )}
       <Pressable style={[styles.button, { backgroundColor: '#111' }]} onPress={() => router.replace('/(auth)/login' as any)}>
         <Text style={styles.buttonText}>Go to log in</Text>
@@ -111,4 +126,8 @@ const styles = StyleSheet.create({
   button: { backgroundColor: '#0b5cff', paddingVertical: 12, borderRadius: 6, alignItems: 'center', marginTop: 4 },
   buttonText: { color: 'white', fontWeight: '600' },
   status: { fontSize: 14, color: '#2563eb', textAlign: 'center' },
+  inlineRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 8 },
+  inlineText: { fontSize: 14, color: '#555' },
+  link: { fontSize: 14, color: '#0b5cff', textDecorationLine: 'underline' },
+  linkDisabled: { color: '#8aa3ff', textDecorationLine: 'none' },
 });

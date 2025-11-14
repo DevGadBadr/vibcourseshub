@@ -59,6 +59,9 @@ model User {
   // Courses this user teaches
   coursesTaught Course[] @relation("CourseInstructor")
 
+  // Additional co-instructor assignments
+  teachingAssignments CourseInstructor[]
+
   // 🔐 New: per-device sessions (recommended)
   sessions Session[]
 
@@ -130,12 +133,29 @@ model Course {
   // ✅ Back relation to Enrollment — MUST match the name used on Enrollment.course
   enrollments Enrollment[] @relation("CourseEnrollments")
 
+  // Additional instructors (many-to-many via join table)
+  instructors CourseInstructor[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([instructorId])
   @@index([isPublished, publishedAt])
   @@index([position])
+}
+
+// Explicit join table for additional course instructors (co-instructors)
+model CourseInstructor {
+  courseId Int
+  userId   Int
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([courseId, userId])
+  @@index([userId])
 }
 
 model Enrollment {

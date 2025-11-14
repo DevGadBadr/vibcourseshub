@@ -2,6 +2,7 @@ import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import type { Course } from '@/types/course';
+import { API_URL } from '@/utils/api';
 import { Image } from 'expo-image';
 import React, { useState } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
@@ -33,6 +34,12 @@ export const CourseCard: React.FC<Props> = ({ course, onPress, onEdit, size = 'r
   const border = useThemeColor({}, 'border');
   const warning = useThemeColor({}, 'warning');
   const neutral = useThemeColor({}, 'neutral');
+  const thumbUri = (() => {
+    const u = course.thumbnailUrl ?? undefined;
+    if (!u) return undefined;
+    if (u.startsWith('http://') || u.startsWith('https://')) return u;
+    return `${API_URL}${u}`;
+  })();
   return (
     <Pressable
       style={[s.card, { backgroundColor: surface, borderColor: border }]}
@@ -40,7 +47,7 @@ export const CourseCard: React.FC<Props> = ({ course, onPress, onEdit, size = 'r
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
     >
-  <Image source={{ uri: course.thumbnailUrl ?? undefined }} style={[s.thumbnail, { backgroundColor: neutral }]} cachePolicy="memory" />
+  <Image source={{ uri: thumbUri }} style={[s.thumbnail, { backgroundColor: neutral }]} contentFit="contain" cachePolicy="memory" />
       {isAdmin && (
         <Pressable
           style={[s.editBtn, { opacity: showEdit ? 1 : 0 }]}
@@ -80,7 +87,7 @@ const styles = StyleSheet.create({
   },
   editBtn: { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, zIndex: 2 },
   editText: { fontSize: 12, color: 'white', fontWeight: '700' },
-  thumbnail: { width: '100%', aspectRatio: 16/9 },
+  thumbnail: { width: '100%', aspectRatio: 375/253 },
   body: { padding: 10, gap: 4 },
   title: { fontSize: 14, fontWeight: '600' },
   instructor: { fontSize: 12, opacity: 0.7 },
@@ -100,7 +107,7 @@ const compactStyles = StyleSheet.create({
   },
   editBtn: { position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, zIndex: 2 },
   editText: { fontSize: 11, color: 'white', fontWeight: '700' },
-  thumbnail: { width: '100%', aspectRatio: 16/10 },
+  thumbnail: { width: '100%', aspectRatio: 375/253 },
   body: { padding: 8, gap: 3 },
   title: { fontSize: 13, fontWeight: '600' },
   instructor: { fontSize: 11, opacity: 0.7 },

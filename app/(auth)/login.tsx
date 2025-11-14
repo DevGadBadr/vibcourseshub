@@ -81,10 +81,10 @@ export default function LoginScreen() {
         <Text style={styles.buttonText}>{loading ? 'Loading...' : 'Log in'}</Text>
       </Pressable>
       <View style={styles.row}>
-  <Link href={"/(auth)/signup" as any}>No account? Sign up</Link>
+        <Link href={"/(auth)/signup" as any}>No account? Sign up</Link>
       </View>
       <View style={styles.row}>
-        <Text style={styles.small}>Forgot password? (Coming soon)</Text>
+        <Link href={"/(auth)/forgot-password" as any}>Forgot password?</Link>
       </View>
     </View>
   );

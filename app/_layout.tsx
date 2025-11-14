@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
+import WebScrollbarStyle from '@/components/web-scrollbar-style';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider } from '@/providers/AuthProvider';
 import { ThemePreferenceProvider } from '@/providers/ThemeProvider';
@@ -31,6 +32,7 @@ export default function RootLayout() {
               <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
             </Stack>
             <StatusBar style="auto" />
+            <WebScrollbarStyle />
           </AuthProvider>
         </ThemeProvider>
       </ThemePreferenceProvider>

@@ -1,10 +1,11 @@
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { ActionTab } from '@/components/ui/action-tab';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/providers/AuthProvider';
-import { API_URL, ApiError, CourseSummary, ManagedUser, ManagedUserDetail, mgmtAddEnrollment, mgmtDeleteUser, mgmtGetUser, mgmtListCourses, mgmtListUsers, mgmtRemoveEnrollment, mgmtSetUserRole, setCoursePublish } from '@/utils/api';
+import { API_URL, ApiError, CourseSummary, deleteCourse, ManagedUser, ManagedUserDetail, mgmtAddEnrollment, mgmtDeleteUser, mgmtGetUser, mgmtListCourses, mgmtListUsers, mgmtRemoveEnrollment, mgmtSetUserRole } from '@/utils/api';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Image, Modal, Platform, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
@@ -15,6 +16,10 @@ function resolveAvatarUrl(url?: string | null): string | undefined {
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   return `${API_URL}${url}`;
 }
+
+// Fixed-width top tabs on web; compact minimum size on mobile
+const TOP_TAB_WIDTH: number | undefined = Platform.OS === 'web' ? 100 : undefined;
+const TOP_TAB_MIN_WIDTH: number = Platform.OS === 'web' ? 100 : 88;
 
 export default function ManagerScreen() {
   const { user } = useAuth();
@@ -119,6 +124,7 @@ export default function ManagerScreen() {
   }, []);
 
   const renderItem = ({ item: u }: { item: ManagedUser }) => {
+    const ACTION_W = Platform.OS === 'web' ? 140 : 110;
     const exp = expanded[u.id];
     const detail = exp?.detail;
     const initials = getInitials(u.name, u.email);
@@ -141,25 +147,29 @@ export default function ManagerScreen() {
           </View>
           <ThemedText numberOfLines={1} ellipsizeMode="middle" style={styles.emailText}>{u.email}</ThemedText>
           <View style={styles.actionRow}>
-            {/* Left: role and enrolled */}
-            <Pressable onPress={() => openRolePicker(u)} style={[styles.ghostBtn, styles.roleBtn, styles.shadow, { backgroundColor: surface }]}>
-              <ThemedText style={[styles.ghostBtnText, styles.roleText]} numberOfLines={1}>
-                {u.role}
-              </ThemedText>
-            </Pressable>
-            <Pressable onPress={() => toggleExpanded(u)} style={[
-              styles.ghostBtn,
-              styles.shadow,
-              { backgroundColor: isOpen ? tint : surface },
-            ]}>
-              <ThemedText style={[styles.ghostBtnText, isOpen ? styles.ghostBtnTextActive : null]}>Enrolled Courses</ThemedText>
-            </Pressable>
+            {/* Fixed-width actions so both buttons are equal size regardless of label length */}
+            <ActionTab
+              label={u.role}
+              onPress={() => openRolePicker(u)}
+              size="sm"
+              style={{ width: ACTION_W, paddingVertical: Platform.OS === 'web' ? 8 : 6, paddingHorizontal: 10, borderRadius: 10 }}
+            />
+            <ActionTab
+              label={isOpen ? 'Hide Courses' : 'Enrolled Courses'}
+              onPress={() => toggleExpanded(u)}
+              size="sm"
+              style={{ width: ACTION_W, paddingVertical: Platform.OS === 'web' ? 8 : 6, paddingHorizontal: 10, borderRadius: 10 }}
+            />
             <View style={{ flex: 1 }} />
-            {/* Right: remove */}
+            {/* Right: remove (match ActionTab look used elsewhere) */}
             {u.role !== 'MANAGER' && user?.id !== u.id && (
-              <Pressable onPress={() => confirmDelete(u)} style={[styles.dangerBtn, styles.shadow, { backgroundColor: danger }]}>
-                <ThemedText style={styles.dangerBtnText}>Remove</ThemedText>
-              </Pressable>
+              <ActionTab
+                label="Remove"
+                danger
+                onPress={() => confirmDelete(u)}
+                size="sm"
+                style={[styles.smallAction, { width: Platform.OS === 'web' ? 104 : 88, paddingVertical: Platform.OS === 'web' ? 8 : 6 }]}
+              />
             )}
           </View>
         </View>
@@ -179,9 +189,13 @@ export default function ManagerScreen() {
                   <View style={[styles.courseThumb, styles.courseThumbFallback]} />
                 )}
                 <ThemedText style={{ flex: 1 }}>{e.course.title}</ThemedText>
-                <Pressable onPress={() => removeCourse(u, e.courseId)} style={[styles.dangerOutlineBtn]}>
-                  <ThemedText style={[styles.dangerOutlineBtnText, { color: danger }]}>Remove</ThemedText>
-                </Pressable>
+                <ActionTab
+                  label="Remove"
+                  danger
+                  size="sm"
+                  onPress={() => removeCourse(u, e.courseId)}
+                  style={{ width: Platform.OS === 'web' ? 96 : 88, paddingVertical: Platform.OS === 'web' ? 8 : 6, paddingHorizontal: 10, alignSelf: 'flex-start' }}
+                />
               </View>
             ))}
           </View>
@@ -196,74 +210,70 @@ export default function ManagerScreen() {
 
   return (
     <ThemedView style={{ flex: 1 }}>
+      {/* Top horizontal nav aligned with content container */}
+      <View style={[styles.containerNarrow, { paddingTop: 16 , paddingHorizontal: 0}]}> 
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+          <ActionTab
+            label="Users"
+            onPress={() => setActivePanel('users')}
+            style={activePanel === 'users' ? styles.topTabActive : styles.topTab}
+          />
+          <ActionTab
+            label="Courses"
+            onPress={() => setActivePanel('courses')}
+            style={activePanel === 'courses' ? styles.topTabActive : styles.topTab}
+          />
+        </View>
+      </View>
+      {/* Content area below */}
       {activePanel === 'users' ? (
-      <FlatList
-        data={users}
-        keyExtractor={(u) => String(u.id)}
-        renderItem={renderItem}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
-        contentContainerStyle={{ paddingBottom: 16, paddingTop: topPad + 12, paddingHorizontal: 0 }}
-        ListHeaderComponent={
-          <View style={styles.containerNarrow}>
-            <View style={styles.headerRow}>
-              <ThemedText style={styles.headerLabel}>Users</ThemedText>
-              <View style={styles.tabsRow}>
-                <Pressable onPress={() => setActivePanel('users')} style={[styles.tabItem, styles.tabItemActive]}>
-                  <ThemedText style={[styles.tabText, styles.tabTextActive]}>Users</ThemedText>
-                </Pressable>
-                <Pressable onPress={() => setActivePanel('courses')} style={[styles.tabItem]}>
-                  <ThemedText style={[styles.tabText]}>Courses</ThemedText>
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        }
-      />
+        <FlatList
+          data={users}
+          keyExtractor={(u) => String(u.id)}
+          renderItem={renderItem}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
+          contentContainerStyle={{ paddingBottom: 24, paddingTop: 8 }}
+        />
       ) : (
-      <FlatList
-        data={managerCourses}
-        keyExtractor={(c) => String(c.id)}
-        renderItem={({ item }: { item: CourseSummary }) => (
-          <View style={[styles.userCard, styles.shadow, styles.containerNarrow, { backgroundColor: surface2 }]}> 
-            <View style={styles.userTopRow}>
-              {item.thumbnailUrl ? (
-                <Image source={{ uri: resolveAvatarUrl(item.thumbnailUrl) }} style={styles.courseThumb} />
-              ) : (
-                <View style={[styles.courseThumb, styles.courseThumbFallback]} />
-              )}
-              <ThemedText numberOfLines={1} ellipsizeMode="tail" style={styles.nameText}>
-                {item.title}
-              </ThemedText>
-            </View>
-            <View style={styles.actionRow}>
-              <Pressable onPress={() => router.push({ pathname: '/(tabs)/courses/[slug]/edit' as any, params: { slug: item.slug } } as any)} style={[styles.ghostBtn, styles.shadow, { backgroundColor: surface }]}>
-                <ThemedText style={styles.ghostBtnText}>Edit</ThemedText>
-              </Pressable>
-              <View style={{ flex: 1 }} />
-              <Pressable onPress={() => setUnpublishFor({ slug: item.slug!, title: item.title })} style={[styles.dangerBtn, styles.shadow, { backgroundColor: danger }]}>
-                <ThemedText style={styles.dangerBtnText}>Remove</ThemedText>
-              </Pressable>
-            </View>
-          </View>
-        )}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
-        contentContainerStyle={{ paddingBottom: 16, paddingTop: topPad + 12, paddingHorizontal: 0 }}
-        ListHeaderComponent={
-          <View style={styles.containerNarrow}>
-            <View style={styles.headerRow}>
-              <ThemedText style={styles.headerLabel}>Courses</ThemedText>
-              <View style={styles.tabsRow}>
-                <Pressable onPress={() => setActivePanel('users')} style={[styles.tabItem]}>
-                  <ThemedText style={[styles.tabText]}>Users</ThemedText>
-                </Pressable>
-                <Pressable onPress={() => setActivePanel('courses')} style={[styles.tabItem, styles.tabItemActive]}>
-                  <ThemedText style={[styles.tabText, styles.tabTextActive]}>Courses</ThemedText>
-                </Pressable>
+        <FlatList
+          data={managerCourses}
+          keyExtractor={(c) => String(c.id)}
+          renderItem={({ item }: { item: CourseSummary }) => (
+            <View style={[styles.courseCardRow, styles.shadow, styles.containerNarrow, { backgroundColor: surface2 }]}> 
+              <View style={styles.courseInfoRow}>
+                {item.thumbnailUrl ? (
+                  <Image source={{ uri: resolveAvatarUrl(item.thumbnailUrl) }} style={styles.courseThumbLarge} />
+                ) : (
+                  <View style={[styles.courseThumbLarge, styles.courseThumbFallback]} />
+                )}
+                <View style={{ flex: 1, gap: 4 }}>
+                  <ThemedText numberOfLines={1} ellipsizeMode="tail" style={styles.courseTitle}>
+                    {item.title}
+                  </ThemedText>
+                  {item.instructor && (
+                    <ThemedText style={styles.courseInstructor} numberOfLines={1}>
+                      {item.instructor.name || item.instructor.email}
+                    </ThemedText>
+                  )}
+                </View>
+                {Platform.OS === 'web' && (
+                  <View style={styles.courseActionsWrap}>
+                    <ActionTab label="Edit" onPress={() => router.push({ pathname: '/(tabs)/courses/[slug]/edit' as any, params: { slug: item.slug } } as any)} style={styles.smallAction} />
+                    <ActionTab label="Delete" danger onPress={() => setUnpublishFor({ slug: item.slug!, title: item.title })} style={styles.smallAction} />
+                  </View>
+                )}
               </View>
+              {Platform.OS !== 'web' && (
+                <View style={styles.courseActionsColumn}>
+                  <ActionTab label="Edit" size="sm" onPress={() => router.push({ pathname: '/(tabs)/courses/[slug]/edit' as any, params: { slug: item.slug } } as any)} style={{ width: '100%' }} />
+                  <ActionTab label="Delete" size="sm" danger onPress={() => setUnpublishFor({ slug: item.slug!, title: item.title })} style={{ width: '100%' }} />
+                </View>
+              )}
             </View>
-          </View>
-        }
-      />
+          )}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
+          contentContainerStyle={{ paddingBottom: 24, paddingTop: 8 }}
+        />
       )}
 
       {/* Role picker modal */}
@@ -337,18 +347,16 @@ export default function ManagerScreen() {
       <Modal visible={!!unpublishFor} transparent animationType="fade" onRequestClose={() => setUnpublishFor(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setUnpublishFor(null)}>
           <View style={[styles.modalCard, { backgroundColor: surface }]}> 
-            <ThemedText type="subtitle" style={{ marginBottom: 8 }}>Remove course</ThemedText>
-            <ThemedText style={{ marginBottom: 12 }}>This will unpublish “{unpublishFor?.title}”. It won't be deleted from the database, but it will disappear from the app. This is a dangerous operation. Continue?</ThemedText>
+            <ThemedText type="subtitle" style={{ marginBottom: 8 }}>Delete course</ThemedText>
+            <ThemedText style={{ marginBottom: 12 }}>This will permanently delete “{unpublishFor?.title}” and its enrollments. This cannot be undone. Continue?</ThemedText>
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
-              <Pressable onPress={() => setUnpublishFor(null)} style={[styles.ghostBtn, { backgroundColor: surface }]}><ThemedText>Cancel</ThemedText></Pressable>
-              <Pressable onPress={async () => {
+              <ActionTab label="Cancel" onPress={() => setUnpublishFor(null)} style={{ flex: 1, width: undefined, paddingVertical: 8 }} />
+              <ActionTab label="Delete" danger onPress={async () => {
                 const p = unpublishFor; setUnpublishFor(null);
                 if (!p) return;
-                try { await setCoursePublish(p.slug, false); await load(); }
-                catch { Alert.alert('Failed to remove course'); }
-              }} style={[styles.dangerBtn, { backgroundColor: danger }]}>
-                <ThemedText style={styles.dangerBtnText}>Unpublish</ThemedText>
-              </Pressable>
+                try { await deleteCourse(p.slug); await load(); }
+                catch { Alert.alert('Failed to delete course'); }
+              }} style={{ flex: 1, width: undefined, paddingVertical: 8 }} />
             </View>
           </View>
         </Pressable>
@@ -371,6 +379,7 @@ function getInitials(name?: string | null, fallbackEmail?: string | null) {
 const styles = StyleSheet.create({
   containerNarrow: { width: '100%', maxWidth: 1000, alignSelf: 'center', paddingHorizontal: 16 },
   userCard: { width: '100%', borderRadius: 12, padding: 12, marginTop: 8 },
+  courseCardRow: { width: '100%', borderRadius: 12, padding: 12, marginTop: 8 },
   userTopRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#ccc' },
   avatarFallback: { justifyContent: 'center', alignItems: 'center' },
@@ -392,6 +401,7 @@ const styles = StyleSheet.create({
   addBtnText: { color: 'white', fontWeight: '700' },
   courseRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   courseThumb: { width: 36, height: 36, borderRadius: 8, backgroundColor: '#ccc' },
+  courseThumbLarge: { width: 48, height: 48, borderRadius: 10, backgroundColor: '#ccc' },
   courseThumbSmall: { width: 28, height: 28, borderRadius: 6, backgroundColor: '#ccc', marginRight: 8 },
   courseThumbFallback: { backgroundColor: '#999' },
   modalBackdrop: { flex: 1, backgroundColor: '#00000077', padding: 16, justifyContent: 'flex-end' },
@@ -406,4 +416,12 @@ const styles = StyleSheet.create({
   tabTextActive: { opacity: 1 },
   headerLabel: { fontSize: 20, fontWeight: '800', opacity: 0.95 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, paddingBottom: 8 },
+  courseInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  courseTitle: { fontWeight: '700', fontSize: 15 },
+  courseInstructor: { fontSize: 12, opacity: 0.7 },
+  courseActionsWrap: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  courseActionsColumn: { marginTop: 8, gap: 8 },
+  smallAction: { paddingVertical: 8, paddingHorizontal: 10, width: 112, alignSelf: 'flex-start' },
+  topTab: { paddingVertical: 6, paddingHorizontal: 10, minWidth: TOP_TAB_MIN_WIDTH, width: TOP_TAB_WIDTH },
+  topTabActive: { paddingVertical: 6, paddingHorizontal: 10, minWidth: TOP_TAB_MIN_WIDTH, width: TOP_TAB_WIDTH, borderWidth: StyleSheet.hairlineWidth, borderColor: '#ffffff22' },
 });

@@ -137,7 +137,15 @@ export class EmailVerificationService {
 
     const link = this.buildVerifyLink(email, token);
     console.log('Verification link (for testing):', link);
-    await this.sendVerificationEmail(email, link);
+
+    // Fire-and-forget email sending to avoid blocking the response
+    setImmediate(() => {
+      this
+        .sendVerificationEmail(email, link)
+        .catch((err) => {
+          console.error('Failed to send verification email:', err?.message || err);
+        });
+    });
   }
 
   async resend(email: string) {

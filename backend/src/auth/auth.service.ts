@@ -3,13 +3,16 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt/dist/index.js';
 import * as argon2 from 'argon2';
 import * as bcrypt from 'bcrypt';
-import { randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import 'dotenv/config';
+import nodemailer, { Transporter } from 'nodemailer';
+import { buildPasswordResetEmail } from '../emailVerification/email.templates.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RefreshDto } from './dto/refresh.dto.js';
@@ -25,6 +28,44 @@ export class AuthService {
     private tokens: TokensService,
     private jwt: JwtService,
   ) {}
+
+  // --- email sending (reuse SMTP config) ---
+  private mailer: Transporter | null = null;
+  private ensureMailer(): Transporter {
+    if (this.mailer) return this.mailer;
+    const host = process.env.SMTP_HOST;
+    const port = parseInt(process.env.SMTP_PORT || '587', 10);
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+    if (!host || !user || !pass) {
+      throw new Error('SMTP configuration missing for password reset emails');
+    }
+    this.mailer = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass },
+    });
+    return this.mailer;
+  }
+
+  private buildResetLink(email: string, token: string) {
+    const rawBase =
+      process.env.RESET_PASSWORD_URL ||
+      process.env.FRONTEND_URL ||
+      'http://devgadbadr.com:3010/reset-password';
+    const url = new URL(rawBase);
+    // Ensure path ends with /reset-password if not explicit
+    const normalized = url.pathname?.trim() || '/';
+    const hasReset = /\/reset-password\/?$/i.test(normalized);
+    if (!hasReset) {
+      const basePath = normalized === '/' ? '' : normalized.replace(/\/$/, '');
+      url.pathname = `${basePath}/reset-password`;
+    }
+    url.searchParams.set('email', email);
+    url.searchParams.set('token', token);
+    return url.toString();
+  }
 
   // 🔐 Proper bcrypt validation
   private async validateUser(email: string, password: string) {
@@ -296,5 +337,106 @@ export class AuthService {
       }
       throw new BadRequestException('Could not create user');
     }
+  }
+
+  // ===== Password reset flow =====
+  private resetTtlMinutes() {
+    return parseInt(process.env.RESET_TOKEN_TTL_MINUTES || '15', 10);
+  }
+
+  private generateToken(): { token: string; hash: string } {
+    const token = randomBytes(32).toString('hex');
+    const hash = createHash('sha256').update(token).digest('hex');
+    return { token, hash };
+  }
+
+  async requestPasswordReset(email: string) {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      // As requested, disclose when user doesn't exist
+      throw new NotFoundException('No user with that email address.');
+    }
+
+    const { token, hash } = this.generateToken();
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: hash, // store hash for security
+        passwordResetExpiresAt: new Date(Date.now() + this.resetTtlMinutes() * 60 * 1000),
+      },
+    });
+
+    // Fire-and-forget email sending to avoid blocking response
+    // UI can immediately show "Check your email" while email is dispatched.
+    setImmediate(() => {
+      try {
+        const appName = process.env.APP_NAME || 'App';
+        const resetUrl = this.buildResetLink(email, token);
+        const from = process.env.MAIL_FROM || `no-reply@${new URL(resetUrl).hostname}`;
+        const { subject, text, html } = buildPasswordResetEmail({
+          appName,
+          resetUrl,
+          expiresMinutes: this.resetTtlMinutes(),
+        });
+        const mailer = this.ensureMailer();
+        mailer
+          .sendMail({ from, to: email, subject, text, html })
+          .catch((err) => {
+            // Log but do not affect the API response
+            console.error('Failed to send reset email:', err?.message || err);
+          });
+      } catch (err: any) {
+        // Log configuration/runtime errors without failing the request
+        console.error('Error scheduling reset email:', err?.message || err);
+      }
+    });
+
+    return { message: 'Reset instructions sent.' };
+  }
+
+  async resetPassword(email: string, token: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || !user.passwordResetToken || !user.passwordResetExpiresAt) {
+      throw new BadRequestException('Invalid or expired reset token.');
+    }
+    if (user.passwordResetExpiresAt < new Date()) {
+      throw new BadRequestException('Reset token has expired.');
+    }
+    const hash = createHash('sha256').update(token).digest('hex');
+    if (hash !== user.passwordResetToken) {
+      throw new BadRequestException('Invalid reset token.');
+    }
+    if (!newPassword || newPassword.length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters.');
+    }
+    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          passwordResetToken: null,
+          passwordResetExpiresAt: null,
+        },
+      }),
+      // Optional: revoke all sessions for security
+      this.prisma.session.deleteMany({ where: { userId: user.id } }),
+    ]);
+    return { message: 'Password has been reset. Please sign in.' };
+  }
+
+  async changePassword(userId: number, currentPassword: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('User not found');
+    const ok = await bcrypt.compare(currentPassword || '', user.passwordHash);
+    if (!ok) throw new ForbiddenException('Current password is incorrect.');
+    if (!newPassword || newPassword.length < 8)
+      throw new BadRequestException('Password must be at least 8 characters.');
+    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
+      this.prisma.session.deleteMany({ where: { userId: user.id } }),
+    ]);
+    return { message: 'Password changed. Please sign in again.' };
   }
 }

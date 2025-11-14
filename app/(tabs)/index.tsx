@@ -1,11 +1,12 @@
 import { CourseCard } from '@/components/course-card';
+import CourseGrid from '@/components/course-grid';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import type { Course } from '@/types/course';
 import { api } from '@/utils/api';
 import { Link, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 // Fetch authenticated user's enrolled courses
 async function fetchMyCourses(): Promise<Course[]> {
@@ -56,40 +57,34 @@ export default function MyCoursesScreen() {
   );
 
   if (isWeb) {
-    // Use wrapping grid with fixed card width for consistent sizing (matches Explore)
-    const cardWidth = 240; // base width similar to Explore targetCardWidth
+    const isEmpty = !loading && !refreshing && courses.length === 0;
     return (
       <ThemedView style={{ flex: 1 }}>
-        <ScrollView
-          style={{ flex: 1 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
-        >
-          <View style={{ width: '100%', maxWidth, alignSelf: 'center' }}>
-            {heading}
-            {loading && !refreshing ? (
-              <ThemedText>Loading…</ThemedText>
-            ) : error ? (
-              <ThemedText style={styles.error}>{error}</ThemedText>
-            ) : courses.length === 0 ? (
-              <ThemedView style={styles.emptyState}>
-                <ThemedText type="subtitle">No courses yet</ThemedText>
-                <ThemedText style={styles.emptyText}>Your courses will appear here once you enroll. Browse and buy your first course now!</ThemedText>
-                <Link href="/explore" asChild>
-                  <Pressable style={styles.ctaBtn}><ThemedText style={styles.ctaBtnText}>Go to Explore</ThemedText></Pressable>
-                </Link>
-              </ThemedView>
-            ) : (
-              <View style={styles.gridWrap}>
-                {courses.map(c => (
-                  <View key={c.id} style={[styles.gridItem, { width: cardWidth }]}> 
-                    <CourseCard course={c} size="compact" hideNewBadge onPress={(cc) => router.push({ pathname: `/courses/${cc.slug}` } as any)} />
-                  </View>
-                ))}
-              </View>
-            )}
+        <View style={{ alignSelf: 'center', width: '100%', maxWidth, paddingHorizontal: 16, paddingTop: 12 }}>
+          {heading}
+          {loading && !refreshing && <ThemedText style={{ paddingVertical: 8 }}>Loading…</ThemedText>}
+          {!!error && <ThemedText style={styles.error}>{error}</ThemedText>}
+        </View>
+        {!isEmpty && (
+          <CourseGrid
+            items={courses}
+            maxWidth={maxWidth}
+            targetCardWidth={260}
+            gap={16}
+            onPress={(cc) => router.push({ pathname: `/courses/${cc.slug}` } as any)}
+          />
+        )}
+        {isEmpty && (
+          <View style={{ alignSelf: 'center', width: '100%', maxWidth, paddingHorizontal: 16, paddingBottom: 32 }}>
+            <ThemedView style={styles.emptyState}>
+              <ThemedText type="subtitle">No courses yet</ThemedText>
+              <ThemedText style={styles.emptyText}>Your courses will appear here once you enroll. Browse and buy your first course now!</ThemedText>
+              <Link href="/explore" asChild>
+                <Pressable style={styles.ctaBtn}><ThemedText style={styles.ctaBtnText}>Go to Explore</ThemedText></Pressable>
+              </Link>
+            </ThemedView>
           </View>
-        </ScrollView>
+        )}
       </ThemedView>
     );
   }
@@ -124,7 +119,7 @@ export default function MyCoursesScreen() {
 
 const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
-  title: { paddingVertical: 4 },
+  title: { paddingVertical: 8, fontSize: 24, fontWeight: '700' },
   error: { color: '#dc2626', marginVertical: 8 },
   list: { paddingBottom: 24 },
   mobileList: { gap: 16 },

@@ -1,13 +1,21 @@
 import {
+    BadRequestException,
     Body,
     Controller,
+    Delete,
     Get,
     Param,
     Post,
     Put,
     Query,
+    UploadedFile,
     UseGuards,
+    UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { existsSync, mkdirSync } from 'fs';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { GetUser } from '../common/decorators/get-user.decorator.js';
 import { CoursesService } from './courses.service.js';
@@ -43,6 +51,38 @@ export class CoursesController {
     return this.courses.create(dto, user);
   }
 
+  // Upload a course thumbnail; returns a relative url under /uploads
+  @UseGuards(JwtAuthGuard)
+  @Post('thumbnail')
+  @UseInterceptors(
+    FileInterceptor('thumbnail', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const dir = join(process.cwd(), 'uploads', 'course-thumbnails');
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+          cb(null, dir);
+        },
+        filename: (req: any, file, cb) => {
+          const userId = req.user?.sub || 'u';
+          const ext = extname(file.originalname || '').toLowerCase() || '.jpg';
+          const name = `${userId}_${Date.now()}${ext}`;
+          cb(null, name);
+        },
+      }),
+      fileFilter: (req, file, cb) => {
+        const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowed.includes(file.mimetype)) return cb(new BadRequestException('Invalid image type'), false);
+        cb(null, true);
+      },
+      limits: { fileSize: 3 * 1024 * 1024 }, // 3MB
+    }),
+  )
+  async uploadThumbnail(@UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file uploaded');
+    const relPath = `/uploads/course-thumbnails/${file.filename}`;
+    return { url: relPath };
+  }
+
   // Place the bulk reorder route BEFORE the param-based ':slug' route to avoid conflicts
   @UseGuards(JwtAuthGuard)
   @Put('reorder/bulk')
@@ -58,5 +98,11 @@ export class CoursesController {
     @GetUser() user: any,
   ) {
     return this.courses.update(slug, dto, user);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(':slug')
+  async delete(@Param('slug') slug: string, @GetUser() user: any) {
+    return this.courses.delete(slug, user);
   }
 }

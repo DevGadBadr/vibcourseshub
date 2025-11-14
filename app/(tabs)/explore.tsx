@@ -1,7 +1,9 @@
 import { CourseCard } from '@/components/course-card';
+import CourseGrid from '@/components/course-grid';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import TopSafeAreaOverlay from '@/components/top-safe-area-overlay';
+import { ActionTab } from '@/components/ui/action-tab';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/providers/AuthProvider';
 import { Course } from '@/types/course';
@@ -59,12 +61,8 @@ export default function ExploreScreen() {
                 <ThemedText style={styles.sectionTitle}>{savingOrder ? 'Saving…' : 'Reorder courses'}</ThemedText>
                 {(user?.role === 'ADMIN' || user?.role === 'MANAGER') && (
                     <View style={{ flexDirection: 'row', gap: 10 }}>
-                      <Pressable onPress={() => setReorderMode(false)} style={[styles.btn, styles.btnSecondary]}>
-                        <ThemedText style={styles.btnText}>Done</ThemedText>
-                      </Pressable>
-                      <Pressable onPress={() => router.push('/(tabs)/courses/add' as any)} style={[styles.btn, styles.btnPrimary, { backgroundColor: tint }]}>
-                        <ThemedText style={styles.btnText}>+ Add New</ThemedText>
-                      </Pressable>
+                      <ActionTab label="Done" onPress={() => setReorderMode(false)} style={{ width: 'auto', paddingVertical: 10, paddingHorizontal: 12 }} />
+                      <ActionTab label="+ Add New" onPress={() => router.push('/(tabs)/courses/add' as any)} style={{ width: 'auto', paddingVertical: 10, paddingHorizontal: 12 }} />
                     </View>
                 )}
               </View>
@@ -99,12 +97,8 @@ export default function ExploreScreen() {
                 <ThemedText style={styles.sectionTitle}>Explore courses</ThemedText>
                 {(user?.role === 'ADMIN' || user?.role === 'MANAGER') && (
                   <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <Pressable onPress={() => setReorderMode(r => !r)} style={[styles.btn, reorderMode ? styles.btnSecondary : styles.btnPrimary, reorderMode ? {} : { backgroundColor: tint }]}>
-                      <ThemedText style={styles.btnText}>{reorderMode ? 'Done' : 'Reorder'}</ThemedText>
-                    </Pressable>
-                    <Pressable onPress={() => router.push('/(tabs)/courses/add' as any)} style={[styles.btn, styles.btnPrimary, { backgroundColor: tint }]}>
-                      <ThemedText style={styles.btnText}>+ Add New</ThemedText>
-                    </Pressable>
+                    <ActionTab label={reorderMode ? 'Done' : 'Reorder'} onPress={() => setReorderMode(r => !r)} style={{ width: 'auto', paddingVertical: 10, paddingHorizontal: 12 }} />
+                    <ActionTab label="+ Add New" onPress={() => router.push('/(tabs)/courses/add' as any)} style={{ width: 'auto', paddingVertical: 10, paddingHorizontal: 12 }} />
                   </View>
                 )}
               </View>
@@ -123,8 +117,11 @@ export default function ExploreScreen() {
   // Web / wide screens: centered responsive grid with compact cards
   const maxWidth = 1280;
   const containerWidth = Math.min(width, maxWidth);
-  const targetCardWidth = 240; // aim for ~5 across on ~1280px
+  const targetCardWidth = 260; // consistent card width target
   const columns = Math.max(3, Math.min(6, Math.floor(containerWidth / targetCardWidth)));
+  const gap = 16;
+  const innerWidth = containerWidth - 32; // 16px side padding
+  const cardWidth = Math.floor((innerWidth - (columns - 1) * gap) / columns);
 
   const gridData = items;
 
@@ -150,39 +147,32 @@ export default function ExploreScreen() {
 
   return (
     <ThemedView style={{ flex: 1 }}>
-      <View key={`grid-root-${columns}`} style={[styles.webWrapper, { maxWidth, alignSelf: 'center', paddingTop: 20 }]}>
+      <View key={`grid-root-${columns}`} style={[styles.webWrapper, { maxWidth, alignSelf: 'center', paddingTop: 12 }]}>
       <View style={styles.headerRow}>
         <ThemedText type="title" style={styles.heading}>Explore courses</ThemedText>
         {(user?.role === 'ADMIN' || user?.role === 'MANAGER') && (
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable onPress={() => setReorderMode(r => !r)} style={[styles.btn, reorderMode ? styles.btnSecondary : styles.btnPrimary, reorderMode ? {} : { backgroundColor: tint }]}> 
-              <ThemedText style={styles.btnText}>{reorderMode ? (savingOrder ? 'Saving…' : 'Done') : 'Reorder'}</ThemedText>
-            </Pressable>
-            <Pressable onPress={() => router.push('/(tabs)/courses/add' as any)} style={[styles.btn, styles.btnPrimary, { backgroundColor: tint }]}>
-              <ThemedText style={styles.btnText}>+ Add New</ThemedText>
-            </Pressable>
+            <ActionTab label={reorderMode ? (savingOrder ? 'Saving…' : 'Done') : 'Reorder'} onPress={() => setReorderMode(r => !r)} style={{ width: 'auto', paddingVertical: 10, paddingHorizontal: 12 }} />
+            <ActionTab label="+ Add New" onPress={() => router.push('/(tabs)/courses/add' as any)} style={{ width: 'auto', paddingVertical: 10, paddingHorizontal: 12 }} />
           </View>
         )}
       </View>
       {!reorderMode && (
-        <FlatList
-          key={`grid-${columns}`}
-          data={gridData}
-          keyExtractor={(item) => String(item.id)}
-          numColumns={columns}
-          columnWrapperStyle={[styles.row, { gap: 16 }]}
-          contentContainerStyle={[styles.list, { paddingHorizontal: 16 }]}
-          renderItem={({ item }) => (
-            <View style={{ flex: 1 }}>
-              <CourseCard course={item} size="compact" isAdmin={user?.role === 'ADMIN' || user?.role === 'MANAGER'} onEdit={(c) => router.push({ pathname: '/(tabs)/courses/[slug]/edit' as any, params: { slug: c.slug } } as any)} />
-            </View>
-          )}
+        <CourseGrid
+          items={gridData}
+          maxWidth={maxWidth}
+          targetCardWidth={targetCardWidth}
+          gap={gap}
+          isAdmin={user?.role === 'ADMIN' || user?.role === 'MANAGER'}
+          onEdit={(c) => router.push({ pathname: '/(tabs)/courses/[slug]/edit' as any, params: { slug: c.slug } } as any)}
         />
       )}
       {reorderMode && Platform.OS === 'web' && DNDK && (
         <WebSortableGrid
           columns={columns}
           items={gridData}
+          cardWidth={cardWidth}
+          gap={gap}
           onReorder={async (next: Course[]) => {
             setItems(next);
             setSavingOrder(true);
@@ -200,8 +190,8 @@ export default function ExploreScreen() {
 }
 
 // --- Web sortable grid using dnd-kit ---
-type SortableGridProps = { columns: number; items: Course[]; onReorder: (next: Course[]) => void | Promise<void> };
-function WebSortableGrid({ columns, items, onReorder }: SortableGridProps) {
+type SortableGridProps = { columns: number; items: Course[]; cardWidth: number; gap?: number; onReorder: (next: Course[]) => void | Promise<void> };
+function WebSortableGrid({ columns, items, cardWidth, gap = 16, onReorder }: SortableGridProps) {
   const { DndContext, closestCenter, PointerSensor, useSensor, useSensors } = DNDK.core;
   const { SortableContext, useSortable, arrayMove, rectSortingStrategy } = DNDK.sortable;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
@@ -220,9 +210,9 @@ function WebSortableGrid({ columns, items, onReorder }: SortableGridProps) {
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={ids} strategy={rectSortingStrategy}>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -(gap / 2) }}>
           {items.map((c) => (
-            <WebSortableItem key={c.id} id={String(c.id)} columns={columns}>
+            <WebSortableItem key={c.id} id={String(c.id)} columns={columns} cardWidth={cardWidth} gap={gap}>
               <CourseCard course={c} size="compact" isAdmin={true} />
             </WebSortableItem>
           ))}
@@ -232,11 +222,11 @@ function WebSortableGrid({ columns, items, onReorder }: SortableGridProps) {
   );
 }
 
-function WebSortableItem({ id, columns, children }: { id: string; columns: number; children: React.ReactNode }) {
+function WebSortableItem({ id, columns, cardWidth, gap = 16, children }: { id: string; columns: number; cardWidth: number; gap?: number; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = DNDK.sortable.useSortable({ id });
   const style: any = {
-    width: `${100 / columns}%`,
-    padding: 8,
+    width: cardWidth,
+    padding: gap / 2,
     cursor: 'grab',
     transition,
     zIndex: isDragging ? 1 : undefined,
@@ -257,7 +247,7 @@ const styles = StyleSheet.create({
   mobileContainer: { paddingVertical: 12, gap: 16 },
   webWrapper: { flex: 1, width: '100%', paddingTop: 12 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16 },
-  heading: { marginBottom: 8, paddingVertical: 12 },
+  heading: { marginBottom: 8, paddingVertical: 8, fontSize: 24, fontWeight: '700' },
   list: { paddingBottom: 24 },
   row: { marginBottom: 16 },
   section: { marginBottom: 24 },

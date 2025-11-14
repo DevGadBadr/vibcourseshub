@@ -1,8 +1,9 @@
+import { CourseCard } from '@/components/course-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/providers/AuthProvider';
 import { api } from '@/utils/api';
-import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
@@ -67,21 +68,31 @@ export default function CourseEditScreen() {
   if (loading) return <ScrollView contentContainerStyle={styles.container}><ThemedText>Loading...</ThemedText></ScrollView>;
   if (!detail) return <ScrollView contentContainerStyle={styles.container}><ThemedText>Not found.</ThemedText></ScrollView>;
 
+  const textColor = useThemeColor({}, 'text');
+  const surface = useThemeColor({}, 'surface');
+  const border = useThemeColor({}, 'border');
+  const tint = useThemeColor({}, 'tint');
+
   if (preview) {
     return (
       <ScrollView contentContainerStyle={styles.container}>
         <ThemedText type="title">Preview</ThemedText>
-        <View style={styles.card}>
-          {!!detail.thumbnailUrl && (
-            <Image source={{ uri: detail.thumbnailUrl }} style={{ width: '100%', aspectRatio: 16/9, borderRadius: 8, marginBottom: 10, backgroundColor: '#eee' }} />
-          )}
-          <ThemedText style={styles.title}>{detail.title}</ThemedText>
-          <ThemedText style={styles.meta}>ID #{detail.id}</ThemedText>
-          <ThemedText style={styles.desc}>{detail.description || 'No description'}</ThemedText>
+        <View style={{ maxWidth: 320 }}>
+          <CourseCard course={{
+            id: detail.id,
+            slug: detail.slug,
+            title: detail.title,
+            description: detail.description || undefined,
+            thumbnailUrl: detail.thumbnailUrl || undefined,
+            averageRating: 5,
+            ratingCount: 0,
+            instructor: { id: detail.instructorId, name: 'Instructor', email: 'instructor@example.com' },
+          } as any} size="compact" hideNewBadge />
         </View>
+        <ThemedText style={styles.previewDesc}>{detail.description || 'No description provided.'}</ThemedText>
         <View style={styles.row}>
           <Pressable style={[styles.btn, styles.secondary]} onPress={() => setPreview(false)}><ThemedText>Back</ThemedText></Pressable>
-          <Pressable style={[styles.btn, styles.primary]} disabled={!canSave || saving} onPress={onSave}><ThemedText style={styles.btnText as any}>Save</ThemedText></Pressable>
+          <Pressable style={[styles.btn, styles.primary, { backgroundColor: tint }]} disabled={!canSave || saving} onPress={onSave}><ThemedText style={styles.btnText as any}>Save</ThemedText></Pressable>
         </View>
       </ScrollView>
     );
@@ -90,9 +101,9 @@ export default function CourseEditScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <ThemedText type="title">Edit Course</ThemedText>
-      <ThemedView style={styles.field}><TextInput placeholder="Title" value={detail.title} onChangeText={v => updateField('title', v)} style={styles.input as any} /></ThemedView>
-      <ThemedView style={[styles.field, { height: 120 }]}><TextInput placeholder="Description" value={detail.description || ''} onChangeText={v => updateField('description', v)} multiline style={[styles.input as any, { height: '100%' }]} /></ThemedView>
-      <ThemedView style={styles.field}><TextInput placeholder="Thumbnail URL" value={detail.thumbnailUrl || ''} onChangeText={v => updateField('thumbnailUrl', v)} autoCapitalize="none" style={styles.input as any} /></ThemedView>
+      <ThemedView style={[styles.field, { backgroundColor: surface, borderColor: border }]}><TextInput placeholder="Title" placeholderTextColor={textColor + '88'} value={detail.title} onChangeText={v => updateField('title', v)} style={[styles.input as any, { color: textColor }]} /></ThemedView>
+      <ThemedView style={[styles.field, { height: 120, backgroundColor: surface, borderColor: border }]}><TextInput placeholder="Description" placeholderTextColor={textColor + '66'} value={detail.description || ''} onChangeText={v => updateField('description', v)} multiline style={[styles.input as any, { height: '100%', color: textColor }]} /></ThemedView>
+      <ThemedView style={[styles.field, { backgroundColor: surface, borderColor: border }]}><TextInput placeholder="Thumbnail URL" placeholderTextColor={textColor + '66'} value={detail.thumbnailUrl || ''} onChangeText={v => updateField('thumbnailUrl', v)} autoCapitalize="none" style={[styles.input as any, { color: textColor }]} /></ThemedView>
       {(user?.role === 'ADMIN' || user?.role === 'MANAGER') && (
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <Pressable onPress={() => setPublished(p => !p)} style={[styles.badgeBtn, published ? styles.badgeOn : styles.badgeOff]}><ThemedText style={styles.badgeBtnText}>{published ? 'Published' : 'Unpublished'}</ThemedText></Pressable>
@@ -102,7 +113,7 @@ export default function CourseEditScreen() {
       <View style={styles.row}>
         <Pressable style={[styles.btn, styles.secondary]} onPress={() => router.replace('/(tabs)/explore' as any)}><ThemedText>Cancel</ThemedText></Pressable>
         <Pressable style={[styles.btn, styles.secondary]} onPress={() => setPreview(true)}><ThemedText>Preview</ThemedText></Pressable>
-        <Pressable style={[styles.btn, styles.primary]} disabled={!canSave || saving} onPress={onSave}><ThemedText style={styles.btnText as any}>Save</ThemedText></Pressable>
+        <Pressable style={[styles.btn, styles.primary, { backgroundColor: tint }]} disabled={!canSave || saving} onPress={onSave}><ThemedText style={styles.btnText as any}>Save</ThemedText></Pressable>
       </View>
     </ScrollView>
   );
@@ -110,14 +121,14 @@ export default function CourseEditScreen() {
 
 const styles = StyleSheet.create({
   container: { padding: 16, gap: 12 },
-  field: { padding: 12, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(0,0,0,0.2)' },
+  field: { padding: 12, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth },
   input: { outlineWidth: 0, outlineColor: 'transparent' },
   row: { flexDirection: 'row', gap: 10, marginTop: 10 },
   btn: { paddingHorizontal: 14, paddingVertical: 12, borderRadius: 10 },
   primary: { backgroundColor: '#0a7ea4' },
   secondary: { backgroundColor: 'rgba(0,0,0,0.06)' },
   btnText: { color: 'white', fontWeight: '700' },
-  card: { padding: 16, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(0,0,0,0.2)' },
+  previewDesc: { marginTop: 12, fontSize: 13, opacity: 0.8 },
   title: { fontSize: 18, fontWeight: '700' },
   meta: { opacity: 0.7, marginTop: 4 },
   desc: { marginTop: 8 },

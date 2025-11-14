@@ -19,8 +19,11 @@ import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import { GetUser } from '../common/decorators/get-user.decorator';
 import { AuthService } from './auth.service';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
+import { ForgotPasswordDto } from './dto/forgot.dto.js';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { SignupDto } from './dto/signup.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
@@ -105,5 +108,27 @@ export class AuthController {
   @Delete('avatar')
   async deleteAvatar(@GetUser() user: any) {
     return this.authService.removeAvatar(user.sub);
+  }
+
+  // ===== Password reset =====
+  @Post('forgot-password')
+  @HttpCode(200)
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    // As requested: if email not found, return 404 with explicit message
+    console.log("Email received for password reset:", dto.email);
+    return this.authService.requestPasswordReset(dto.email);
+  }
+
+  @Post('reset-password')
+  @HttpCode(200)
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.email, dto.token, dto.password);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  @HttpCode(200)
+  async changePassword(@GetUser() user: any, @Body() dto: ChangePasswordDto) {
+    return this.authService.changePassword(user.sub, dto.currentPassword, dto.newPassword);
   }
 }

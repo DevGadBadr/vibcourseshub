@@ -89,6 +89,37 @@ export async function removeAvatar() {
   } as any);
 }
 
+export async function uploadCourseThumbnail(form: FormData): Promise<{ url: string }> {
+  return api('/courses/thumbnail', {
+    method: 'POST',
+    auth: true,
+    body: form,
+  } as any);
+}
+
+// Auth: password flows
+export async function forgotPassword(email: string) {
+  return api('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  } as any);
+}
+
+export async function resetPassword(email: string, token: string, password: string) {
+  return api('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, token, password }),
+  } as any);
+}
+
+export async function changePassword(currentPassword: string, newPassword: string) {
+  return api('/auth/change-password', {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify({ currentPassword, newPassword }),
+  } as any);
+}
+
 // Management types and helpers
 export type ManagedUser = {
   id: number;
@@ -98,7 +129,7 @@ export type ManagedUser = {
   avatarUrl?: string | null;
 };
 
-export type CourseSummary = { id: number; slug?: string; title: string; thumbnailUrl?: string | null; isPublished?: boolean; isFeatured?: boolean };
+export type CourseSummary = { id: number; slug?: string; title: string; thumbnailUrl?: string | null; isPublished?: boolean; isFeatured?: boolean; instructor?: { id: number; name?: string | null; email: string } };
 
 export type ManagedUserDetail = {
   id: number;
@@ -122,6 +153,10 @@ export async function mgmtListCourses(): Promise<CourseSummary[]> {
 }
 export async function setCoursePublish(slug: string, isPublished: boolean) {
   return api(`/courses/${slug}`, { method: 'PUT', auth: true, body: JSON.stringify({ isPublished }) } as any);
+}
+
+export async function deleteCourse(slug: string): Promise<{ ok: boolean }> {
+  return api(`/courses/${slug}`, { method: 'DELETE', auth: true } as any);
 }
 
 export async function mgmtSetUserRole(id: number, role: ManagedUser['role']): Promise<ManagedUser> {

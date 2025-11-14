@@ -48,7 +48,7 @@ export class ManagementService {
     return this.prisma.course.findMany({
       where: { isPublished: true },
       orderBy: { title: 'asc' },
-      select: { id: true, slug: true, title: true, thumbnailUrl: true, isPublished: true },
+      select: { id: true, slug: true, title: true, thumbnailUrl: true, isPublished: true, instructor: { select: { id: true, name: true, email: true } } },
     });
   }
 

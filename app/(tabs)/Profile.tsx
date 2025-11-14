@@ -1,12 +1,13 @@
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { ActionTab } from '@/components/ui/action-tab';
 import ThemedCard from '@/components/ui/themed-card';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/providers/AuthProvider';
 import { useThemePreference } from '@/providers/ThemeProvider';
-import { API_URL, removeAvatar, uploadAvatar } from '@/utils/api';
+import { API_URL, changePassword, removeAvatar, uploadAvatar } from '@/utils/api';
 import { appStorage } from '@/utils/storage';
 import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -30,6 +31,13 @@ export default function ProfileScreen() {
   const [localAvatar, setLocalAvatar] = useState<string | null>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [editMenuVisible, setEditMenuVisible] = useState(false);
+  const [changePwVisible, setChangePwVisible] = useState(false);
+  const [currentPw, setCurrentPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [pwStatus, setPwStatus] = useState<string | null>(null);
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwLoading, setPwLoading] = useState(false);
   const neutralBg = useThemeColor({}, 'neutral');
   const successBg = useThemeColor({}, 'success');
   const warningBg = useThemeColor({}, 'warning');
@@ -202,10 +210,9 @@ export default function ProfileScreen() {
             </ThemedCard>
 
             <ThemedCard style={styles.section}>
-              <View style={[styles.row, { justifyContent: 'flex-start', gap: 12 }]}>
-                <Pressable style={[styles.logoutGhost, { borderColor: danger }]} onPress={() => signOut()}>
-                  <ThemedText style={[styles.logoutGhostText, { color: danger }]}>Log out</ThemedText>
-                </Pressable>
+              <View style={styles.actionsColumn}>
+                <ActionTab label="Change Password" onPress={() => setChangePwVisible(true)} />
+                <ActionTab label="Log out" danger onPress={() => signOut()} />
               </View>
             </ThemedCard>
           </View>
@@ -251,6 +258,52 @@ export default function ProfileScreen() {
               <Pressable style={[styles.menuItem, styles.menuCancel]} onPress={() => setEditMenuVisible(false)}>
                 <ThemedText style={styles.menuItemText}>Cancel</ThemedText>
               </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* Change password modal */}
+        <Modal visible={changePwVisible} transparent animationType="fade" onRequestClose={() => setChangePwVisible(false)}>
+          <Pressable style={[styles.menuBackdrop, { backgroundColor: overlay }]} onPress={() => setChangePwVisible(false)}>
+            <View style={[styles.menuCard, { backgroundColor: surface }]}> 
+              <View style={{ padding: 16, gap: 12 }}>
+                <ThemedText type="subtitle">Change Password</ThemedText>
+                {pwStatus && <ThemedText style={{ color: tint }}>{pwStatus}</ThemedText>}
+                {pwError && <ThemedText style={{ color: danger }}>{pwError}</ThemedText>}
+                <View style={styles.inputRow}> 
+                  <ThemedText style={styles.inputLabel}>Current</ThemedText>
+                  <Input secure value={currentPw} onChange={setCurrentPw} placeholder="Current password" />
+                </View>
+                <View style={styles.inputRow}> 
+                  <ThemedText style={styles.inputLabel}>New</ThemedText>
+                  <Input secure value={newPw} onChange={setNewPw} placeholder="New password" />
+                </View>
+                <View style={styles.inputRow}> 
+                  <ThemedText style={styles.inputLabel}>Confirm</ThemedText>
+                  <Input secure value={confirmPw} onChange={setConfirmPw} placeholder="Repeat new password" />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end' }}>
+                  <Pressable disabled={pwLoading} style={[styles.modalBtn, { backgroundColor: danger }]} onPress={() => setChangePwVisible(false)}>
+                    <ThemedText style={styles.modalBtnText}>Cancel</ThemedText>
+                  </Pressable>
+                  <Pressable disabled={pwLoading} style={[styles.modalBtn, { backgroundColor: tint }]} onPress={async () => {
+                    setPwError(null); setPwStatus(null);
+                    if (!currentPw || !newPw) { setPwError('All fields required.'); return; }
+                    if (newPw.length < 8) { setPwError('Password must be at least 8 characters.'); return; }
+                    if (newPw !== confirmPw) { setPwError('Passwords do not match.'); return; }
+                    setPwLoading(true);
+                    try {
+                      await changePassword(currentPw, newPw);
+                      setPwStatus('Password changed. Please sign in again.');
+                      setTimeout(() => { setChangePwVisible(false); signOut(); }, 1200);
+                    } catch (e: any) {
+                      setPwError(e?.message || 'Could not change password.');
+                    } finally { setPwLoading(false); }
+                  }}>
+                    <ThemedText style={styles.modalBtnText}>{pwLoading ? 'Saving…' : 'Save'}</ThemedText>
+                  </Pressable>
+                </View>
+              </View>
             </View>
           </Pressable>
         </Modal>
@@ -308,6 +361,11 @@ const styles = StyleSheet.create({
   menuItem: { paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: '#00000020' },
   menuItemText: { fontSize: 16, fontWeight: '600' },
   menuCancel: { borderBottomWidth: 0 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  inputLabel: { width: 80, fontSize: 12, opacity: 0.7 },
+  modalBtn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8 },
+  modalBtnText: { color: 'white', fontWeight: '600' },
+  actionsColumn: { width: '100%', gap: 12 },
 });
 
 function resolveAvatarUrl(url?: string | null): string | undefined {
@@ -316,3 +374,17 @@ function resolveAvatarUrl(url?: string | null): string | undefined {
   // treat as relative to API
   return `${API_URL}${url}`;
 }
+
+// lightweight input component local to profile (avoid extra imports)
+function Input({ value, onChange, placeholder, secure }: { value: string; onChange: (v: string) => void; placeholder?: string; secure?: boolean }) {
+  return (
+    <View style={{ flex: 1 }}>
+      <ImportedTextInput value={value} onChangeText={onChange} placeholder={placeholder} secureTextEntry={secure} />
+    </View>
+  );
+}
+
+// Use RN TextInput via dynamic import to not alter top imports
+// (Simplify patch: create alias component.)
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { TextInput: ImportedTextInput } = require('react-native');

@@ -1,13 +1,14 @@
 import { CourseLevel } from '@prisma/client';
 import {
-  IsBoolean,
-  IsEmail,
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsString,
-  IsUrl,
-  MinLength,
+    IsArray,
+    IsBoolean,
+    IsEmail,
+    IsEnum,
+    IsInt,
+    IsOptional,
+    IsString,
+    IsUrl,
+    MinLength,
 } from 'class-validator';
 
 export class CreateCourseDto {
@@ -30,6 +31,11 @@ export class CreateCourseDto {
   @IsOptional()
   @IsEmail()
   instructorEmail?: string; // Or by email; will be created as INSTRUCTOR if missing
+
+  // Optional: additional instructors (co-instructors)
+  @IsOptional()
+  @IsArray()
+  instructorsIds?: number[];
 
   @IsOptional()
   @IsInt()

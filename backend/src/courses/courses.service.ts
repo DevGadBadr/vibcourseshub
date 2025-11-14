@@ -126,6 +126,23 @@ export class CoursesService {
       position: nextPosition,
     };
     const created = await this.prisma.course.create({ data });
+
+    // Persist additional co-instructors if provided
+    if (Array.isArray(dto.instructorsIds) && dto.instructorsIds.length > 0) {
+      const uniqueIds = Array.from(new Set(dto.instructorsIds.filter((n) => Number.isInteger(n) && n !== created.instructorId)));
+      if (uniqueIds.length > 0) {
+        // Optional: filter to only users with INSTRUCTOR role
+        const valid = await this.prisma.user.findMany({ where: { id: { in: uniqueIds }, role: 'INSTRUCTOR' }, select: { id: true } });
+        const validIds = valid.map((u) => u.id);
+        if (validIds.length > 0) {
+          await this.prisma.courseInstructor.createMany({
+            data: validIds.map((id) => ({ courseId: created.id, userId: id })),
+            skipDuplicates: true,
+          });
+        }
+      }
+    }
+
     return created;
   }
 
@@ -134,16 +151,41 @@ export class CoursesService {
     dto: UpdateCourseDto,
     user: { id: number; role: string },
   ) {
-    if (user?.role !== 'ADMIN' && user?.role !== 'MANAGER') throw new ForbiddenException();
-    const exists = await this.prisma.course.findUnique({
+    const course = await this.prisma.course.findUnique({
       where: { slug },
-      select: { id: true },
+      select: { id: true, instructorId: true, isPublished: true },
     });
-    if (!exists) throw new NotFoundException('Course not found');
-    const updated = await this.prisma.course.update({
-      where: { slug },
-      data: dto,
-    });
+    if (!course) throw new NotFoundException('Course not found');
+    const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+    const isInstructorOwner = user?.role === 'INSTRUCTOR' && course.instructorId === user.id;
+    if (!isAdmin && !isInstructorOwner) throw new ForbiddenException();
+
+    // Instructors can only edit limited fields; admins/managers can edit all.
+    const allowedForInstructor: (keyof UpdateCourseDto)[] = [
+      'title',
+      'description',
+      'thumbnailUrl',
+      'promoUrl',
+      'language',
+      'level',
+      'durationSeconds',
+    ];
+    const data: Partial<UpdateCourseDto & { publishedAt?: Date | null }> = {};
+    if (isAdmin) {
+      Object.entries(dto).forEach(([k, v]) => {
+        if (v !== undefined) (data as any)[k] = v;
+      });
+      // Maintain publishedAt when toggling isPublished
+      if (dto.isPublished !== undefined) {
+        data.publishedAt = dto.isPublished ? (course.isPublished ? course.isPublished && undefined : new Date()) : null;
+      }
+    } else {
+      allowedForInstructor.forEach((k) => {
+        if (dto[k] !== undefined) (data as any)[k] = dto[k];
+      });
+    }
+
+    const updated = await this.prisma.course.update({ where: { slug }, data });
     return updated;
   }
 
@@ -164,6 +206,18 @@ export class CoursesService {
         this.prisma.course.update({ where: { id: it.id }, data: { position: it.position } as any }),
       ),
     );
+    return { ok: true };
+  }
+
+  async delete(slug: string, user: { id: number; role: string }) {
+    if (user?.role !== 'ADMIN' && user?.role !== 'MANAGER') throw new ForbiddenException();
+    const course = await this.prisma.course.findUnique({ where: { slug }, select: { id: true } });
+    if (!course) throw new NotFoundException('Course not found');
+    // Remove enrollments then course to avoid FK restriction
+    await this.prisma.$transaction([
+      this.prisma.enrollment.deleteMany({ where: { courseId: course.id } }),
+      this.prisma.course.delete({ where: { id: course.id } }),
+    ]);
     return { ok: true };
   }
 }

@@ -27,3 +27,33 @@ If you did not create an account, you can ignore this email.`;
   `;
   return { subject, text, html };
 }
+
+export function buildPasswordResetEmail(options: {
+  appName: string;
+  resetUrl: string;
+  expiresMinutes: number;
+}) {
+  const { appName, resetUrl, expiresMinutes } = options;
+  const subject = `[${appName}] Reset your password`;
+  const text = `You requested to reset your password for ${appName}.
+
+Click the link below to set a new password:
+
+${resetUrl}
+
+This link will expire in ${expiresMinutes} minutes.
+If you did not request this, you can safely ignore this email.`;
+  const html = `
+    <div style="font-family:Arial,sans-serif; max-width: 560px; margin: 0 auto;">
+      <h2>Reset your password</h2>
+      <p>You requested to reset your password for ${appName}.</p>
+      <p>
+        <a href="${resetUrl}" style="display:inline-block;padding:10px 16px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;">Set new password</a>
+      </p>
+      <p>If the button doesn't work, copy and paste this URL into your browser:</p>
+      <p><a href="${resetUrl}">${resetUrl}</a></p>
+      <p style="color:#6b7280;font-size:12px;">This link will expire in ${expiresMinutes} minutes.</p>
+    </div>
+  `;
+  return { subject, text, html };
+}
