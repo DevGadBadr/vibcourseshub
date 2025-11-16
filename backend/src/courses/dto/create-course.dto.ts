@@ -5,6 +5,7 @@ import {
     IsEmail,
     IsEnum,
     IsInt,
+    IsNumber,
     IsOptional,
     IsString,
     IsUrl,
@@ -37,6 +38,11 @@ export class CreateCourseDto {
   @IsArray()
   instructorsIds?: number[];
 
+  // Optional: categories to assign
+  @IsOptional()
+  @IsArray()
+  categoriesIds?: number[];
+
   @IsOptional()
   @IsInt()
   durationSeconds?: number;
@@ -60,4 +66,17 @@ export class CreateCourseDto {
   @IsOptional()
   @IsBoolean()
   isPublished?: boolean;
+
+  // Pricing
+  @IsOptional()
+  @IsNumber()
+  price?: number;
+
+  @IsOptional()
+  @IsNumber()
+  discountPrice?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  showPrice?: boolean;
 }

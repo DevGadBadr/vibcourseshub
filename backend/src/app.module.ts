@@ -5,6 +5,7 @@ import { join } from 'path';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
+import { CategoriesModule } from './categories/categories.module.js';
 import { CoursesModule } from './courses/courses.module.js';
 import { EmailVerificationModule } from './emailVerification/email.module.js';
 import { ManagementModule } from './management/management.module.js';
@@ -20,6 +21,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
     EmailVerificationModule,
     AuthModule,
     CoursesModule,
+    CategoriesModule,
     ManagementModule,
     JwtModule.register({}),
   ],

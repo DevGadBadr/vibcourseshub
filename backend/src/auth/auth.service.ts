@@ -1,17 +1,20 @@
 import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-  UnauthorizedException,
+    BadRequestException,
+    ConflictException,
+    ForbiddenException,
+    Injectable,
+    NotFoundException,
+    UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt/dist/index.js';
 import * as argon2 from 'argon2';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import 'dotenv/config';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { OAuth2Client } from 'google-auth-library';
 import nodemailer, { Transporter } from 'nodemailer';
+import { join } from 'path';
 import { buildPasswordResetEmail } from '../emailVerification/email.templates.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { LoginDto } from './dto/login.dto.js';
@@ -119,7 +122,7 @@ export class AuthService {
 
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { lastLoginAt: new Date(), loginCount: { increment: 1 } },
+      data: { lastLoginAt: new Date(), loginCount: { increment: 1 }, isLoggedIn: true },
     });
 
     return {
@@ -134,6 +137,185 @@ export class AuthService {
         loginCount: user.loginCount,
         isEmailVerified: user.isEmailVerified,
         avatarUrl: user.avatarUrl,
+        provider: user.provider || 'local',
+        googlePicture: user.googlePicture,
+      },
+    };
+  }
+
+  // --- Google social login ---
+  async googleLogin(
+    idToken: string,
+    meta?: { userAgent?: string; ip?: string },
+  ) {
+    const rawIds = process.env.GOOGLE_CLIENT_IDS || process.env.GOOGLE_CLIENT_ID || '';
+    const audiences = rawIds
+      .split(/[,\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!audiences.length) {
+      throw new BadRequestException('Google client ID(s) not configured');
+    }
+    if (!idToken) throw new BadRequestException('Missing Google idToken');
+
+    // Try verification against any configured audience (web, android, ios).
+    let payload: any = null;
+    let lastError: any = null;
+    for (const aud of audiences) {
+      const oauthClient = new OAuth2Client(aud);
+      try {
+        const ticket = await oauthClient.verifyIdToken({ idToken, audience: aud });
+        payload = ticket.getPayload();
+        if (payload) break;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    if (!payload) {
+      console.warn('Google ID token verification failed:', lastError?.message || lastError);
+      throw new UnauthorizedException('Invalid Google identity token');
+    }
+    if (!payload) throw new UnauthorizedException('Invalid Google token payload');
+
+    const sub = payload.sub as string | undefined;
+    const email = (payload.email as string | undefined)?.toLowerCase();
+    const name = payload.name as string | undefined;
+    const picture = payload.picture as string | undefined;
+    const emailVerified = Boolean(payload.email_verified);
+    if (!sub || !email) {
+      throw new UnauthorizedException('Google account missing id or email');
+    }
+
+    // Find or create user
+    // Transactional upsert logic to avoid race conditions
+    let user = await this.prisma.$transaction(async (tx) => {
+      const existingGoogle = await tx.user.findUnique({ where: { googleId: sub } });
+      if (existingGoogle) {
+        return await tx.user.update({
+          where: { id: existingGoogle.id },
+          data: {
+            googlePicture: picture ?? existingGoogle.googlePicture ?? undefined,
+            googleEmailVerified: emailVerified,
+            provider: 'google',
+            name: existingGoogle.name ?? name ?? undefined,
+            isEmailVerified: existingGoogle.isEmailVerified || emailVerified,
+            emailVerifiedAt: existingGoogle.emailVerifiedAt || (emailVerified ? new Date() : null),
+            avatarUrl: existingGoogle.avatarUrl || picture || existingGoogle.googlePicture || null,
+          },
+        });
+      }
+      // Try matching by email
+      const byEmail = await tx.user.findUnique({ where: { email } });
+      if (byEmail) {
+        return await tx.user.update({
+          where: { id: byEmail.id },
+          data: {
+            googleId: sub,
+            googlePicture: picture ?? byEmail.googlePicture ?? undefined,
+            googleEmailVerified: emailVerified,
+            provider: 'google',
+            name: byEmail.name ?? name ?? undefined,
+            isEmailVerified: byEmail.isEmailVerified || emailVerified,
+            emailVerifiedAt: byEmail.emailVerifiedAt || (emailVerified ? new Date() : null),
+            avatarUrl: byEmail.avatarUrl || picture || null,
+          },
+        });
+      }
+      // Create new user
+      const randomPwd = randomBytes(24).toString('hex');
+      const passwordHash = await bcrypt.hash(randomPwd, SALT_ROUNDS);
+      return await tx.user.create({
+        data: {
+          email,
+          passwordHash,
+          name: name ?? null,
+          role: 'TRAINEE',
+          googleId: sub,
+          googlePicture: picture ?? null,
+          googleEmailVerified: emailVerified,
+          provider: 'google',
+          isEmailVerified: emailVerified,
+          emailVerifiedAt: emailVerified ? new Date() : null,
+          avatarUrl: picture ?? null,
+        },
+      });
+    });
+
+    // Optionally download avatar file locally for consistency
+    const fetchAvatar = (process.env.GOOGLE_FETCH_AVATAR || 'false').toLowerCase() === 'true';
+    if (fetchAvatar && picture && (!user.avatarUrl || user.avatarUrl === picture)) {
+      try {
+        const res = await fetch(picture);
+        if (res.ok) {
+          const arrayBuf = await res.arrayBuffer();
+          const buffer = Buffer.from(arrayBuf);
+          const ext = picture.match(/\.([a-zA-Z0-9]+)(?:$|[?])/)?.[1] || 'jpg';
+          const dir = join(process.cwd(), 'uploads', 'avatars');
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+          const fileName = `g_${sub}_${Date.now()}.${ext}`;
+          const fullPath = join(dir, fileName);
+          writeFileSync(fullPath, buffer);
+          const relPath = `/uploads/avatars/${fileName}`;
+          user = await this.prisma.user.update({
+            where: { id: user.id },
+            data: { avatarUrl: relPath },
+          });
+        }
+      } catch (e) {
+        console.warn('Failed to download Google avatar:', (e as any)?.message || e);
+      }
+    }
+
+    // Create session and issue tokens (same flow as password login)
+    const session = await this.prisma.session.create({
+      data: {
+        userId: user.id,
+        refreshTokenHash: 'placeholder',
+        refreshTokenExp: new Date(
+          Date.now() + this.ms(process.env.JWT_REFRESH_TTL || '14d'),
+        ),
+        userAgent: meta?.userAgent,
+        ip: meta?.ip,
+        device: 'google',
+        jti: randomUUID(),
+      },
+    });
+
+    const accessToken = await this.tokens.signAccess({
+      sub: user.id,
+      sid: session.id,
+      email: user.email,
+      role: user.role,
+    });
+    const refreshToken = await this.tokens.signRefresh({
+      sub: user.id,
+      sid: session.id,
+      jti: session.jti || undefined,
+    });
+    await this.prisma.session.update({
+      where: { id: session.id },
+      data: { refreshTokenHash: await argon2.hash(refreshToken) },
+    });
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date(), loginCount: { increment: 1 }, isLoggedIn: true },
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        createdAt: user.createdAt,
+        loginCount: user.loginCount,
+        isEmailVerified: user.isEmailVerified,
+        avatarUrl: user.avatarUrl,
+        provider: user.provider || 'google',
+        googlePicture: user.googlePicture,
       },
     };
   }
@@ -207,6 +389,11 @@ export class AuthService {
     await this.prisma.session.deleteMany({
       where: { id: sid, userId }, // both numeric
     });
+    // If no sessions remain for this user, set isLoggedIn to false
+    const remaining = await this.prisma.session.count({ where: { userId } });
+    if (remaining === 0) {
+      await this.prisma.user.update({ where: { id: userId }, data: { isLoggedIn: false } });
+    }
 
     return { message: 'Logged out successfully' };
   }
@@ -224,6 +411,9 @@ export class AuthService {
         loginCount: true,
         avatarUrl: true,
         emailVerifiedAt: true,
+        provider: true,
+        googlePicture: true,
+        googleId: true,
       },
     });
     return user;
@@ -320,6 +510,7 @@ export class AuthService {
           role: (dto.role as any) ?? 'TRAINEE', // you’ll pass ADMIN for your own account
           isEmailVerified: false,
           emailVerifiedAt: null,
+          provider: 'local',
         },
         select: {
           id: true,
@@ -327,6 +518,7 @@ export class AuthService {
           name: true,
           role: true,
           createdAt: true,
+          provider: true,
         },
       });
 

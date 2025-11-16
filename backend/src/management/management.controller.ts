@@ -37,6 +37,36 @@ export class ManagementController {
     return this.svc.listCourses(user?.role);
   }
 
+  // Categories management
+  @Get('categories')
+  listCategories(@GetUser() user: any) {
+    return this.svc.listCategories(user?.role);
+  }
+
+  @Post('categories')
+  createCategory(@Body() body: { name: string; slug?: string; description?: string }, @GetUser() user: any) {
+    return this.svc.createCategory(body, user?.role);
+  }
+
+  @Patch('categories/:id')
+  updateCategory(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { name?: string; slug?: string; description?: string },
+    @GetUser() user: any,
+  ) {
+    return this.svc.updateCategory(id, body, user?.role);
+  }
+
+  @Delete('categories/:id')
+  deleteCategory(@Param('id', ParseIntPipe) id: number, @GetUser() user: any) {
+    return this.svc.deleteCategory(id, user?.role);
+  }
+
+  @Patch('categories/reorder')
+  reorderCategories(@Body() body: { ids: number[] }, @GetUser() user: any) {
+    return this.svc.reorderCategories(body.ids, user?.role);
+  }
+
   @Post('users/:id/enrollments')
   addEnrollment(
     @Param('id', ParseIntPipe) id: number,

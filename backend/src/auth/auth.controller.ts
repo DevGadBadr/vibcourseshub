@@ -1,17 +1,17 @@
 // src/auth/auth.controller.ts
 import {
-  BadRequestException,
-  Body,
-  Controller,
-  Delete,
-  Get,
-  HttpCode,
-  Ip,
-  Post,
-  Req,
-  UploadedFile,
-  UseGuards,
-  UseInterceptors,
+    BadRequestException,
+    Body,
+    Controller,
+    Delete,
+    Get,
+    HttpCode,
+    Ip,
+    Post,
+    Req,
+    UploadedFile,
+    UseGuards,
+    UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { existsSync, mkdirSync } from 'fs';
@@ -21,6 +21,7 @@ import { GetUser } from '../common/decorators/get-user.decorator';
 import { AuthService } from './auth.service';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { ForgotPasswordDto } from './dto/forgot.dto.js';
+import { GoogleLoginDto } from './dto/google-login.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
@@ -51,6 +52,16 @@ export class AuthController {
   @HttpCode(200)
   refresh(@Body() dto: RefreshDto) {
     return this.authService.refresh(dto);
+  }
+
+  // --- Google social login ---
+  @Post('google')
+  @HttpCode(200)
+  async google(@Body() dto: GoogleLoginDto, @Req() req: any, @Ip() ip: string) {
+    return this.authService.googleLogin(dto.idToken, {
+      userAgent: req.headers['user-agent'],
+      ip,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -90,7 +101,7 @@ export class AuthController {
         },
       }),
       fileFilter: (req, file, cb) => {
-        const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+        const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
         if (!allowed.includes(file.mimetype)) return cb(new BadRequestException('Invalid image type'), false);
         cb(null, true);
       },

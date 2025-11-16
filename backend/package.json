@@ -20,6 +20,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "seed:test-user": "node --loader ts-node/esm ./src/scripts/create-test-user.ts",
     "seed:courses": "tsx ./src/scripts/seed-courses.ts"
+    ,
+    "seed:random-prices": "tsx ./src/scripts/randomize-prices.ts"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^3.0.1",
@@ -36,6 +38,9 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "dotenv": "^17.2.3",
+    "expo-auth-session": "~7.0.8",
+    "expo-secure-store": "~15.0.7",
+    "google-auth-library": "^10.5.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.10",

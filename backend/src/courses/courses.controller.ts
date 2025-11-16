@@ -27,9 +27,19 @@ export class CoursesController {
   constructor(private courses: CoursesService) {}
 
   @Get()
-  async list(@Query('take') take = '20', @Query('cursor') cursor?: string) {
+  async list(
+    @Query('take') take = '20',
+    @Query('cursor') cursor?: string,
+    @Query('categoryIds') categoryIds?: string,
+    @Query('instructorId') instructorId?: string,
+  ) {
     const takeNum = Math.min(Math.max(parseInt(take, 10) || 20, 1), 50);
-    return this.courses.list(takeNum, cursor ? Number(cursor) : undefined);
+    const categories = (categoryIds || '')
+      .split(',')
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => Number.isInteger(n));
+    const instrId = instructorId ? parseInt(instructorId, 10) : undefined;
+    return this.courses.list({ take: takeNum, cursor: cursor ? Number(cursor) : undefined, categoryIds: categories.length ? categories : undefined, instructorId: Number.isInteger(instrId as any) ? (instrId as number) : undefined });
   }
 
   // Authenticated: list only courses the signed-in user is actively enrolled in.
@@ -70,7 +80,7 @@ export class CoursesController {
         },
       }),
       fileFilter: (req, file, cb) => {
-        const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+        const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
         if (!allowed.includes(file.mimetype)) return cb(new BadRequestException('Invalid image type'), false);
         cb(null, true);
       },
