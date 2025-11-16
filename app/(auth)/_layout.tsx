@@ -1,9 +1,11 @@
 import { useAuth } from '@/providers/AuthProvider';
 import { Redirect, Stack } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function AuthLayout() {
   const { user, initializing } = useAuth();
+  const insets = useSafeAreaInsets();
 
   if (initializing) {
     return (
@@ -21,10 +23,12 @@ export default function AuthLayout() {
       // On web, prevent showing a back button that could navigate to the tabs anchor
       headerBackVisible: false,
       headerLeft: () => null,
+      // Ensure screen content starts below the system status bar
+      contentStyle: { paddingTop: insets.top },
     }}>
-      <Stack.Screen name="login" options={{ title: 'Log in' }} />
-      <Stack.Screen name="signup" options={{ title: 'Sign up' }} />
-      <Stack.Screen name="verify-email" options={{ title: 'Check your email' }} />
+      <Stack.Screen name="login" options={{ title: 'VibSolutions Courses'}} />
+      <Stack.Screen name="signup" options={{ title: 'VibSolutions Courses' }} />
+      <Stack.Screen name="verify-email" options={{ title: 'VibSolutions Courses' }} />
     </Stack>
   );
 }

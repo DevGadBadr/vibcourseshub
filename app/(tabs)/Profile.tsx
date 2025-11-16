@@ -13,7 +13,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function formatDate(iso?: string) {
   if (!iso) return '—';
@@ -26,7 +25,6 @@ export default function ProfileScreen() {
   const colorScheme = useColorScheme();
   const tint = Colors[colorScheme ?? 'light'].tint;
   const [refreshing, setRefreshing] = useState(false);
-  const insets = useSafeAreaInsets();
   const { theme, setTheme } = useThemePreference();
   const [localAvatar, setLocalAvatar] = useState<string | null>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -45,9 +43,8 @@ export default function ProfileScreen() {
   const danger = useThemeColor({}, 'danger');
   const surface = useThemeColor({}, 'surface');
 
-  // Height of the top overlay area (safe area + extra visual header space)
-  const TOP_EXTRA = 8; // keep upper space compact
-  const topPad = insets.top + TOP_EXTRA;
+  // Global scene safe-area handles top inset; keep small local spacing only on mobile
+  const topPad = 12;
 
   const initials = useMemo(() => {
     if (!user?.name && !user?.email) return '?';
@@ -141,7 +138,7 @@ export default function ProfileScreen() {
     <ThemedView style={{ flex: 1 }}>
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: topPad + 12 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: topPad }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.centered}>
@@ -149,13 +146,17 @@ export default function ProfileScreen() {
             <ThemedCard style={styles.headerCard}>
               <View style={styles.avatarWrapper}>
                 <Pressable onPress={() => setPreviewVisible(true)}>
-                  {user?.avatarUrl || localAvatar ? (
-                    <Image source={{ uri: (resolveAvatarUrl(user?.avatarUrl) || localAvatar)! }} style={styles.avatarImage} />
-                  ) : (
-                    <View style={[styles.avatarFallback, { backgroundColor: tint }]}> 
-                      <ThemedText type="defaultSemiBold" style={styles.avatarInitials}>{initials}</ThemedText>
-                    </View>
-                  )}
+                  {(() => {
+                    const resolved = resolveAvatarUrl(user?.avatarUrl) || user?.googlePicture || localAvatar || undefined;
+                    if (resolved) {
+                      return <Image source={{ uri: resolved }} style={styles.avatarImage} />;
+                    }
+                    return (
+                      <View style={[styles.avatarFallback, { backgroundColor: tint }]}> 
+                        <ThemedText type="defaultSemiBold" style={styles.avatarInitials}>{initials}</ThemedText>
+                      </View>
+                    );
+                  })()}
                 </Pressable>
                 <Pressable style={styles.editAvatarBtn} onPress={() => setEditMenuVisible(true)}>
                   <ThemedText style={styles.editAvatarText}>Edit</ThemedText>
@@ -199,6 +200,15 @@ export default function ProfileScreen() {
                 <ThemedText style={styles.label}>Login count</ThemedText>
                 <ThemedText style={styles.value}>{user?.loginCount ?? 0}</ThemedText>
               </View>
+              <View style={styles.row}>
+                <ThemedText style={styles.label}>Primary method</ThemedText>
+                <ThemedText style={styles.value}>{user?.provider ? capitalize(user.provider) : 'Local'}</ThemedText>
+              </View>
+            </ThemedCard>
+
+            <ThemedCard style={styles.section}>
+              <ThemedText type="subtitle">Login Methods</ThemedText>
+              {renderLoginMethods(user)}
             </ThemedCard>
 
             <ThemedCard style={styles.section}>
@@ -323,10 +333,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     gap: 12,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 3,
+    ...(Platform.select({ web: { boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }, default: { shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 12, elevation: 3 } }) as any),
   },
   avatarWrapper: { width: 84, height: 84, position: 'relative' },
   avatarImage: { width: 84, height: 84, borderRadius: 42 },
@@ -348,7 +355,12 @@ const styles = StyleSheet.create({
   badgeRow: { flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 16 },
   badgeText: { fontSize: 12, fontWeight: '600' },
-  section: { padding: 16, borderRadius: 14, gap: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  section: {
+    padding: 16,
+    borderRadius: 14,
+    gap: 12,
+    ...(Platform.select({ web: { boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }, default: { shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 } }) as any),
+  },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   label: { fontSize: 14, opacity: 0.7 },
   value: { fontSize: 14, fontWeight: '600' },
@@ -373,6 +385,31 @@ function resolveAvatarUrl(url?: string | null): string | undefined {
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   // treat as relative to API
   return `${API_URL}${url}`;
+}
+
+function capitalize(v?: string | null) {
+  if (!v) return '';
+  return v.charAt(0).toUpperCase() + v.slice(1);
+}
+
+function renderLoginMethods(user: any) {
+  const items: Array<{ label: string; value: string; active: boolean }> = [];
+  if (user?.email) items.push({ label: 'Email', value: user.email, active: true });
+  const hasGoogle = user?.provider === 'google' || !!user?.googleId;
+  items.push({ label: 'Google', value: hasGoogle ? user.email : 'Not connected', active: hasGoogle });
+  // Placeholder for future Apple integration
+  const hasApple = user?.provider === 'apple' || !!user?.appleId;
+  items.push({ label: 'Apple', value: hasApple ? user.email : 'Not connected', active: hasApple });
+  return (
+    <View style={{ gap: 10 }}>
+      {items.map((m) => (
+        <View key={m.label} style={styles.row}>
+          <ThemedText style={styles.label}>{m.label}</ThemedText>
+          <ThemedText style={[styles.value, !m.active && { opacity: 0.5 }]}>{m.value}</ThemedText>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 // lightweight input component local to profile (avoid extra imports)

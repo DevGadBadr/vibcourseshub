@@ -1,3 +1,4 @@
+import GoogleSignInButton from '@/components/GoogleSignInButton';
 import { useAuth } from '@/providers/AuthProvider';
 import { Link, router } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -80,6 +81,12 @@ export default function LoginScreen() {
       <Pressable disabled={loading} onPress={onSubmit} style={styles.button}>
         <Text style={styles.buttonText}>{loading ? 'Loading...' : 'Log in'}</Text>
       </Pressable>
+      <View style={styles.dividerRow}>
+        <View style={styles.line} />
+        <Text style={styles.small}>or</Text>
+        <View style={styles.line} />
+      </View>
+      <GoogleSignInButton />
       <View style={styles.row}>
         <Link href={"/(auth)/signup" as any}>No account? Sign up</Link>
       </View>
@@ -100,4 +107,6 @@ const styles = StyleSheet.create({
   error: { color: '#b00020' },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   small: { fontSize: 12, color: '#666' },
+  dividerRow: { marginVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  line: { flex: 1, height: 1, backgroundColor: '#e5e5e5' },
 });

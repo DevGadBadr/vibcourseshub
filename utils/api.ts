@@ -24,15 +24,36 @@ function toHumanValidation(messages: unknown): string | null {
   return messages.map(mapOne).join('\n');
 }
 
-export async function api<T>(path: string, init?: RequestInit & { auth?: boolean }) {
+type ApiInit = RequestInit & { auth?: boolean; timeoutMs?: number };
+
+export async function api<T>(path: string, init?: ApiInit) {
   const headers: Record<string, string> = {};
   let access = await storage.getItem('accessToken');
   if (init?.auth && access) headers['Authorization'] = `Bearer ${access}`;
   // Only set JSON content-type if body isn't FormData
   const isFormData = (init?.body && typeof FormData !== 'undefined' && init.body instanceof FormData);
   if (!isFormData) headers['Content-Type'] = 'application/json';
+  headers['X-Request-Id'] = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-  const res = await fetch(`${API_URL}${path}`, { ...init, headers });
+  const doFetch = async (): Promise<Response> => {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : undefined;
+    const id = init?.timeoutMs ? setTimeout(() => controller?.abort(), init.timeoutMs) : null;
+    try {
+      const res = await fetch(`${API_URL}${path}`, { ...init, headers, signal: controller?.signal });
+      return res;
+    } finally {
+      if (id) clearTimeout(id as any);
+    }
+  };
+
+  let res: Response;
+  try {
+    res = await doFetch();
+  } catch (e) {
+    // One quick retry on network errors
+    await new Promise((r) => setTimeout(r, 500));
+    res = await doFetch();
+  }
   if (res.status === 401 && init?.auth) {
     // try refresh
     const rt = await storage.getItem('refreshToken');
@@ -129,7 +150,9 @@ export type ManagedUser = {
   avatarUrl?: string | null;
 };
 
-export type CourseSummary = { id: number; slug?: string; title: string; thumbnailUrl?: string | null; isPublished?: boolean; isFeatured?: boolean; instructor?: { id: number; name?: string | null; email: string } };
+export type Category = { id: number; name: string; slug: string; description?: string | null; courseCount?: number; position?: number };
+
+export type CourseSummary = { id: number; slug?: string; title: string; thumbnailUrl?: string | null; isPublished?: boolean; isFeatured?: boolean; instructor?: { id: number; name?: string | null; email: string }, categories?: Pick<Category, 'id' | 'name' | 'slug'>[]; enrollCount?: number };
 
 export type ManagedUserDetail = {
   id: number;
@@ -181,4 +204,30 @@ export async function mgmtAddEnrollment(id: number, courseId: number): Promise<{
 
 export async function mgmtRemoveEnrollment(id: number, courseId: number): Promise<{ ok: boolean }> {
   return api(`/management/users/${id}/enrollments/${courseId}`, { method: 'DELETE', auth: true } as any);
+}
+
+// Management: Categories CRUD
+export async function mgmtListCategories(): Promise<Category[]> {
+  return api('/management/categories', { method: 'GET', auth: true } as any);
+}
+
+export async function mgmtCreateCategory(payload: { name: string; slug?: string; description?: string }) {
+  return api('/management/categories', { method: 'POST', auth: true, body: JSON.stringify(payload) } as any);
+}
+
+export async function mgmtUpdateCategory(id: number, payload: { name?: string; slug?: string; description?: string }) {
+  return api(`/management/categories/${id}`, { method: 'PATCH', auth: true, body: JSON.stringify(payload) } as any);
+}
+
+export async function mgmtDeleteCategory(id: number) {
+  return api(`/management/categories/${id}`, { method: 'DELETE', auth: true } as any);
+}
+
+export async function mgmtReorderCategories(ids: number[]) {
+  return api('/management/categories/reorder', { method: 'PATCH', auth: true, body: JSON.stringify({ ids }) } as any);
+}
+
+// Public categories list
+export async function listCategories(): Promise<Category[]> {
+  return api('/categories', { method: 'GET' } as any);
 }

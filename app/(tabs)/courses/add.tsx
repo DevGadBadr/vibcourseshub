@@ -1,7 +1,8 @@
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { api, API_URL, ManagedUser, mgmtListUsers, uploadCourseThumbnail } from '@/utils/api';
+import { api, API_URL, Category, listCategories, ManagedUser, mgmtListUsers, uploadCourseThumbnail } from '@/utils/api';
+import { showToast } from '@/utils/toast';
 import { useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
@@ -14,6 +15,8 @@ export default function CourseAddScreen() {
   const textColor = useThemeColor({}, 'text');
   const [title, setTitle] = useState('');
   const [slug, setSlug] = useState('');
+  const TITLE_MAX = 60;
+  const titleRemaining = Math.max(0, TITLE_MAX - title.length);
   const [description, setDescription] = useState('');
   const [instructorEmail, setInstructorEmail] = useState('');
   const [selectedInstructors, setSelectedInstructors] = useState<ManagedUser[]>([]);
@@ -24,6 +27,14 @@ export default function CourseAddScreen() {
   const [thumbnailUrl, setThumbnailUrl] = useState('');
   const [preview, setPreview] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<Category[]>([]);
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const [categoryQuery, setCategoryQuery] = useState('');
+  // Pricing state
+  const [showPrice, setShowPrice] = useState(true);
+  const [price, setPrice] = useState<string>('');
+  const [discountPrice, setDiscountPrice] = useState<string>('');
 
   const canSave = useMemo(() => title.length > 3 && slug.length > 3 && selectedInstructors.length > 0, [title, slug, selectedInstructors]);
   const isWeb = Platform.OS === 'web';
@@ -42,6 +53,13 @@ export default function CourseAddScreen() {
       setThumbnailUrl('');
       setPreview(false);
       setSaving(false);
+      setSelectedCategories([]);
+      setCategories([]);
+      setCategoryPickerOpen(false);
+      setShowPrice(true);
+      setPrice('');
+      setDiscountPrice('');
+      setCategoryQuery('');
     }, [])
   );
 
@@ -69,6 +87,32 @@ export default function CourseAddScreen() {
     );
   }, [instructorQuery, instructors]);
 
+  const openCategoryPicker = async () => {
+    setCategoryPickerOpen(true);
+    if (categories.length === 0) {
+      try {
+        const all = await listCategories();
+        setCategories(all);
+      } catch (e) {
+        Alert.alert('Failed to load categories');
+        setCategoryPickerOpen(false);
+      }
+    }
+  };
+
+  const filteredCategories = useMemo(() => {
+    const q = categoryQuery.trim().toLowerCase();
+    if (!q) return categories;
+    return categories.filter((c) => c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q));
+  }, [categoryQuery, categories]);
+
+  const toggleSelectCategory = (c: Category) => {
+    setSelectedCategories((prev) => {
+      const exists = prev.some((x) => x.id === c.id);
+      return exists ? prev.filter((x) => x.id !== c.id) : [...prev, c];
+    });
+  };
+
   const toggleSelectInstructor = (u: ManagedUser) => {
     setSelectedInstructors(prev => {
       const exists = prev.some(x => x.id === u.id);
@@ -81,6 +125,8 @@ export default function CourseAddScreen() {
     if (!canSave) return;
     setSaving(true);
     try {
+      const priceNumber = showPrice ? (price.trim() ? Number(price) : 0) : 0;
+      const discountNumber = showPrice && discountPrice.trim() ? Number(discountPrice) : null;
       await api('/courses', {
         method: 'POST',
         auth: true,
@@ -92,9 +138,14 @@ export default function CourseAddScreen() {
           instructorsIds: selectedInstructors.map(u => u.id),
           instructorEmail, // legacy fallback
           thumbnailUrl,
+          categoriesIds: selectedCategories.map(c => c.id),
+          // Pricing
+          showPrice,
+          price: priceNumber,
+          discountPrice: discountNumber,
         }),
       } as any);
-      Alert.alert('Success', 'Course added');
+      showToast('Course added');
       router.replace('/(tabs)/explore' as any);
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Something went wrong');
@@ -136,7 +187,17 @@ export default function CourseAddScreen() {
       <View style={styles.centered}>
         <View style={styles.formContainer}>
           <ThemedText type="title" style={{paddingTop: isWeb ? 0 : 40,fontSize: 24}}>Add Course</ThemedText>
-          <ThemedView style={[styles.field, { borderColor }]}><TextInput placeholder="Title" placeholderTextColor={placeholderColor} value={title} onChangeText={setTitle} style={[styles.input as any, { color: textColor }]} /></ThemedView>
+          <ThemedView style={[styles.field, { borderColor, flexDirection: 'row', alignItems: 'center' }]}>
+            <TextInput
+              placeholder="Title"
+              placeholderTextColor={placeholderColor}
+              value={title}
+              onChangeText={setTitle}
+              maxLength={TITLE_MAX}
+              style={[styles.input as any, { color: textColor, flex: 1 }]}
+            />
+            <ThemedText style={{ opacity: 0.6, fontSize: 12 }}>{titleRemaining}</ThemedText>
+          </ThemedView>
           <ThemedView style={[styles.field, { borderColor }]}><TextInput placeholder="Slug (course-url)" placeholderTextColor={placeholderColor} value={slug} autoCapitalize="none" onChangeText={setSlug} style={[styles.input as any, { color: textColor }]} /></ThemedView>
           <Pressable onPress={openInstructorPicker} style={[styles.field, { borderColor, justifyContent: 'center', minHeight: 44 }]}>
             {selectedInstructors.length === 0 ? (
@@ -159,7 +220,57 @@ export default function CourseAddScreen() {
               </View>
             )}
           </Pressable>
+          <Pressable onPress={openCategoryPicker} style={[styles.field, { borderColor, justifyContent: 'center', minHeight: 44 }]}> 
+            {selectedCategories.length === 0 ? (
+              <ThemedText style={{ color: placeholderColor }}>Select categories</ThemedText>
+            ) : (
+              <View style={styles.instructorsRow}>
+                <ThemedText style={styles.fieldLabel}>Categories</ThemedText>
+                <View style={styles.chipsWrap}>
+                  {selectedCategories.map((c) => (
+                    <View key={c.id} style={styles.chip}>
+                      <ThemedText style={styles.chipText}>{c.name}</ThemedText>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </Pressable>
           <ThemedView style={[styles.field, { height: 120, borderColor }]}><TextInput placeholder="Description" placeholderTextColor={placeholderColor} value={description} onChangeText={setDescription} multiline style={[styles.input as any, { height: '100%', color: textColor }]} /></ThemedView>
+          {/* Pricing */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Pressable onPress={() => setShowPrice((v) => !v)} style={[styles.btn, showPrice ? styles.primary : styles.secondary]}>
+              <ThemedText style={showPrice ? (styles.btnText as any) : undefined}>{showPrice ? 'Show Price: ON' : 'Show Price: OFF'}</ThemedText>
+            </Pressable>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <ThemedView style={[styles.field, { flex: 1, borderColor, opacity: showPrice ? 1 : 0.5 }]}>
+              <ThemedText style={{ opacity: 0.7, fontSize: 12 }}>Price (USD)</ThemedText>
+              <TextInput
+                placeholder="e.g. 49.99"
+                placeholderTextColor={placeholderColor}
+                value={price}
+                onChangeText={setPrice}
+                keyboardType="decimal-pad"
+                inputMode="decimal"
+                editable={showPrice}
+                style={{ paddingVertical: 6, color: textColor }}
+              />
+            </ThemedView>
+            <ThemedView style={[styles.field, { flex: 1, borderColor, opacity: showPrice ? 1 : 0.5 }]}>
+              <ThemedText style={{ opacity: 0.7, fontSize: 12 }}>Discount (optional)</ThemedText>
+              <TextInput
+                placeholder="e.g. 19.99"
+                placeholderTextColor={placeholderColor}
+                value={discountPrice}
+                onChangeText={setDiscountPrice}
+                keyboardType="decimal-pad"
+                inputMode="decimal"
+                editable={showPrice}
+                style={{ paddingVertical: 6, color: textColor }}
+              />
+            </ThemedView>
+          </View>
           <ThemedView style={[styles.field, { borderColor }]}>
             <TextInput placeholder="Thumbnail URL (optional)" placeholderTextColor={placeholderColor} value={thumbnailUrl} autoCapitalize="none" onChangeText={setThumbnailUrl} style={[styles.input as any, { color: textColor }]} />
             {Platform.OS === 'web' && (
@@ -238,6 +349,48 @@ export default function CourseAddScreen() {
             </ScrollView>
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
               <Pressable style={[styles.btn, styles.secondary]} onPress={() => setInstructorPickerOpen(false)}>
+                <ThemedText>Done</ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={categoryPickerOpen} transparent animationType="fade" onRequestClose={() => setCategoryPickerOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill as any} onPress={() => setCategoryPickerOpen(false)} />
+          <View style={[styles.modalCard, { backgroundColor: Platform.OS === 'web' ? '#1c1c1c' : '#222' }]}> 
+            <ThemedText type="subtitle" style={{ marginBottom: 8 }}>Select categories</ThemedText>
+            <ThemedView style={[styles.field, { borderColor, marginBottom: 8 }]}> 
+              <TextInput
+                placeholder="Search categories"
+                placeholderTextColor={placeholderColor}
+                value={categoryQuery}
+                onChangeText={setCategoryQuery}
+                autoCapitalize="none"
+                style={[styles.input as any, { color: textColor }]}
+              />
+            </ThemedView>
+            <ScrollView style={{ maxHeight: 360 }}>
+              {filteredCategories.length === 0 ? (
+                <ThemedText>No categories found.</ThemedText>
+              ) : (
+                filteredCategories.map((c) => {
+                  const checked = selectedCategories.some((x) => x.id === c.id);
+                  return (
+                    <Pressable key={c.id} onPress={() => toggleSelectCategory(c)} style={styles.instructorRow}>
+                      <View style={{ flex: 1 }}>
+                        <ThemedText numberOfLines={1} style={{ fontWeight: '600' }}>{c.name}</ThemedText>
+                        <ThemedText numberOfLines={1} style={{ opacity: 0.7 }}>{c.slug}</ThemedText>
+                      </View>
+                      <ThemedText style={{ fontWeight: '800', opacity: checked ? 1 : 0.25 }}>{checked ? '✓' : '○'}</ThemedText>
+                    </Pressable>
+                  );
+                })
+              )}
+            </ScrollView>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+              <Pressable style={[styles.btn, styles.secondary]} onPress={() => setCategoryPickerOpen(false)}>
                 <ThemedText>Done</ThemedText>
               </Pressable>
             </View>

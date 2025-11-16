@@ -2,8 +2,8 @@
 # start_services.sh
 # This script starts your Node.js and Prisma services
 
-echo "Starting npm service..."
-(cd /root/Gad/web/APIs/vibSolutionsAPI && npm start) &
+echo "Starting Expo (dev mode)..."
+(npm start) &
 
 echo "Starting NestJS backend (dev mode)..."
 (cd /root/Gad/web/APIs/vibSolutionsAPI/backend && npm run start:dev) &

@@ -12,6 +12,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.vibesolutions.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -49,7 +50,11 @@
       "router": {},
       "eas": {
         "projectId": "8c34ecdf-cd8e-4d38-919d-fb16ec19e626"
-      }
+      },
+      "apiUrl": "http://devgadbadr.com:3010",
+      "googleWebClientId": "702799034410-63brk9esbf2tiuboagutdj3q518gp9jr.apps.googleusercontent.com",
+      "googleAndroidClientId": "YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com",
+      "googleIosClientId": "YOUR_IOS_CLIENT_ID.apps.googleusercontent.com"
     },
     "owner": "gadbadr"
   }

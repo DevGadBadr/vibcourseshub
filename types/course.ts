@@ -8,4 +8,11 @@ export type Course = {
   ratingCount: number;
   thumbnailUrl?: string | null;
   isFeatured?: boolean;
+  categories?: { id: number; name: string; slug: string }[];
+  // Added for authenticated "mine" listing
+  progressPct?: number | null;
+  // Pricing
+  price?: number;
+  discountPrice?: number | null;
+  showPrice?: boolean;
 };

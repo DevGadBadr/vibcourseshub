@@ -33,6 +33,7 @@ export const CourseCard: React.FC<Props> = ({ course, onPress, onEdit, size = 'r
   const surface = useThemeColor({}, 'surface');
   const border = useThemeColor({}, 'border');
   const warning = useThemeColor({}, 'warning');
+  const tint = useThemeColor({}, 'tint');
   const neutral = useThemeColor({}, 'neutral');
   const thumbUri = (() => {
     const u = course.thumbnailUrl ?? undefined;
@@ -61,15 +62,31 @@ export const CourseCard: React.FC<Props> = ({ course, onPress, onEdit, size = 'r
         </Pressable>
       )}
       <View style={s.body}>
-        <ThemedText numberOfLines={2} style={s.title}>{course.title}</ThemedText>
+        <View style={s.titleWrap}>
+          <ThemedText numberOfLines={2} style={s.title}>{course.title}</ThemedText>
+        </View>
         <ThemedText style={s.instructor} numberOfLines={1}>{course.instructor?.name ?? course.instructor?.email ?? '—'}</ThemedText>
         <View style={s.ratingRow}>
-          {renderStarsToken(Number(course.averageRating ?? 5), warning, border)}
-          {course.ratingCount && course.ratingCount > 0 ? (
-            <ThemedText style={[s.ratingText, { color: warning }]}>{Number(course.averageRating ?? 5).toFixed(1)}</ThemedText>
-          ) : hideNewBadge ? null : (
-            <View style={[s.inlineBadge]}>
-              <ThemedText style={[s.inlineBadgeText, { color: warning }]}>New</ThemedText>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: size === 'compact' ? 3 : 4 }}>
+            {renderStarsToken(Number(course.averageRating ?? 5), warning, border)}
+            {course.ratingCount && course.ratingCount > 0 ? (
+              <ThemedText style={[s.ratingText, { color: warning }]}>{Number(course.averageRating ?? 5).toFixed(1)}</ThemedText>
+            ) : hideNewBadge ? null : (
+              <View style={[s.inlineBadge]}>
+                <ThemedText style={[s.inlineBadgeText, { color: warning }]}>New</ThemedText>
+              </View>
+            )}
+          </View>
+          {course.showPrice !== false && typeof course.price === 'number' && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              {course.discountPrice != null ? (
+                <>
+                  <ThemedText style={[s.oldPrice, { color: '#9ca3af' }]}>{formatCurrencySafe(course.price)}</ThemedText>
+                  <ThemedText style={[s.newPrice, { color: tint }]}>{formatCurrencySafe(course.discountPrice)}</ThemedText>
+                </>
+              ) : (
+                <ThemedText style={[s.newPrice, { color: tint }]}>{formatCurrencySafe(course.price)}</ThemedText>
+              )}
             </View>
           )}
         </View>
@@ -89,13 +106,17 @@ const styles = StyleSheet.create({
   editText: { fontSize: 12, color: 'white', fontWeight: '700' },
   thumbnail: { width: '100%', aspectRatio: 375/253 },
   body: { padding: 10, gap: 4 },
-  title: { fontSize: 14, fontWeight: '600' },
+  // Reserve space for exactly two lines of title text so all cards have equal height
+  titleWrap: { minHeight: 38 },
+  title: { fontSize: 14, fontWeight: '600', lineHeight: 19 },
   instructor: { fontSize: 12, opacity: 0.7 },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   stars: { flexDirection: 'row', gap: 2 },
   ratingText: { fontSize: 12, fontWeight: '500' },
   inlineBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
   inlineBadgeText: { fontSize: 11, fontWeight: '800' },
+  oldPrice: { fontSize: 11, textDecorationLine: 'line-through' },
+  newPrice: { fontSize: 13, fontWeight: '800' },
 });
 
 const compactStyles = StyleSheet.create({
@@ -109,13 +130,16 @@ const compactStyles = StyleSheet.create({
   editText: { fontSize: 11, color: 'white', fontWeight: '700' },
   thumbnail: { width: '100%', aspectRatio: 375/253 },
   body: { padding: 8, gap: 3 },
-  title: { fontSize: 13, fontWeight: '600' },
+  titleWrap: { minHeight: 36 },
+  title: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
   instructor: { fontSize: 11, opacity: 0.7 },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
   stars: { flexDirection: 'row', gap: 2 },
   ratingText: { fontSize: 11, fontWeight: '500' },
   inlineBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999 },
   inlineBadgeText: { fontSize: 10, fontWeight: '800' },
+  oldPrice: { fontSize: 10, textDecorationLine: 'line-through' },
+  newPrice: { fontSize: 12, fontWeight: '800' },
 });
 
 // Render stars using themed colors
@@ -130,4 +154,13 @@ function renderStarsToken(rating: number, activeColor: string, inactiveColor: st
     stars.push(<IconSymbol key={i} name={name} size={14} color={color} />);
   }
   return <View style={styles.stars}>{stars}</View>;
+}
+
+function formatCurrencySafe(n?: number | null): string {
+  if (typeof n !== 'number' || isNaN(n)) return '';
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EGP', maximumFractionDigits: 2 }).format(n);
+  } catch {
+    return `E£${n.toFixed(2)}`;
+  }
 }

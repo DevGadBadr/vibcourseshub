@@ -14,6 +14,9 @@ export type User = {
   loginCount?: number;
   avatarUrl?: string | null;
   emailVerifiedAt?: string | null;
+  provider?: string | null;
+  googlePicture?: string | null;
+  googleId?: string | null;
 } | null;
 
 const API_URL = (Constants.expoConfig?.extra as any)?.apiUrl || process.env.EXPO_PUBLIC_API_URL || 'https://devgadbadr.com/vibapi';
@@ -101,6 +104,7 @@ interface AuthContextValue {
   signUp: (payload: { email: string; password: string; name?: string }) => Promise<'verify' | 'ok'>;
   signOut: () => Promise<void>;
   refreshMe: () => Promise<void>;
+  googleSignIn: (idToken: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -223,7 +227,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadSession();
   }, [loadSession]);
 
-  const value = useMemo(() => ({ user, loading, initializing, signIn, signUp, signOut, refreshMe }), [user, loading, initializing, signIn, signUp, signOut, refreshMe]);
+  const googleSignIn = useCallback(async (idToken: string) => {
+    setLoading(true);
+    try {
+      const data = await api<{ accessToken: string; refreshToken: string; user: User }>(
+        '/auth/google',
+        { method: 'POST', body: JSON.stringify({ idToken }), timeoutMs: 12000 } as any
+      );
+      if (data.accessToken) await storage.setItem('accessToken', data.accessToken);
+      if (data.refreshToken) await storage.setItem('refreshToken', data.refreshToken);
+      setUser(data.user);
+      router.replace('/(tabs)');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const value = useMemo(() => ({ user, loading, initializing, signIn, signUp, signOut, refreshMe, googleSignIn }), [user, loading, initializing, signIn, signUp, signOut, refreshMe, googleSignIn]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
