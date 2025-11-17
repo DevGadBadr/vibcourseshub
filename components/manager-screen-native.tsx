@@ -1,10 +1,3 @@
-import { Platform } from 'react-native';
-
-// Platform-specific import: web gets null, native gets the PagerView component
-// The .native.ts file is never bundled for web, so react-native-pager-view stays out
-import { ManagerScreenNative } from '@/utils/native-manager';
-
-// Web implementation (no swipe)
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ActionTab } from '@/components/ui/action-tab';
@@ -16,9 +9,12 @@ import { API_URL, ApiError, Category, CourseSummary, deleteCourse, ManagedUser, 
 import { showToast } from '@/utils/toast';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Image, Modal, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, FlatList, Image, Modal, Platform, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// Safe to import on native only - this component is never loaded on web
+const PagerView = require('react-native-pager-view').default;
 
 function resolveAvatarUrl(url?: string | null): string | undefined {
   if (!url) return undefined;
@@ -26,22 +22,10 @@ function resolveAvatarUrl(url?: string | null): string | undefined {
   return `${API_URL}${url}`;
 }
 
-// Fixed-width top tabs on web; compact minimum size on mobile
 const TOP_TAB_WIDTH: number | undefined = Platform.OS === 'web' ? 100 : undefined;
 const TOP_TAB_MIN_WIDTH: number = Platform.OS === 'web' ? 100 : 88;
 
-export default function ManagerScreen() {
-  // On native platforms, use the PagerView-enabled version
-  if (Platform.OS !== 'web' && ManagerScreenNative) {
-    const NativeComponent = ManagerScreenNative as React.ComponentType;
-    return <NativeComponent />;
-  }
-
-  // Web implementation below (no swipe, no PagerView)
-  return <ManagerScreenWeb />;
-}
-
-function ManagerScreenWeb() {
+export default function ManagerScreenNative() {
   const { user } = useAuth();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(false);
@@ -68,18 +52,22 @@ function ManagerScreenWeb() {
   const tint = Colors[colorScheme ?? 'light'].tint;
   const IS_MOBILE = Platform.OS !== 'web';
   const insets = useSafeAreaInsets();
-  const TOP_EXTRA = 8; // keep upper space compact, same as Profile
+  const TOP_EXTRA = 8;
   const topPad = insets.top + TOP_EXTRA;
 
   const panels: Array<typeof activePanel> = ['users', 'courses', 'categories'];
+  const pagerRef = useRef<any>(null);
+
   const goToPanel = useCallback((panel: typeof activePanel) => {
     setActivePanel(panel);
-  }, []);
+    const idx = panels.indexOf(panel);
+    if (idx >= 0) pagerRef.current?.setPage(idx);
+  }, [panels]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      if (!user || user.role !== 'MANAGER') return; // avoid hanging spinner for non-managers
+      if (!user || user.role !== 'MANAGER') return;
       const [u, cs, cats] = await Promise.all([mgmtListUsers(), mgmtListCourses(), mgmtListCategories()]);
       setUsers(u);
       setManagerCourses(cs.filter(c => c.isPublished !== false));
@@ -95,7 +83,6 @@ function ManagerScreenWeb() {
     }, [load])
   );
 
-  // Redirect non-manager users away if they hit this route directly (web deep link/manual URL)
   useEffect(() => {
     if (!user || user.role !== 'MANAGER') {
       try { router.replace('/(tabs)/Profile' as any); } catch {}
@@ -120,11 +107,9 @@ function ManagerScreenWeb() {
   const toggleExpanded = useCallback(async (u: ManagedUser) => {
     const wasOpen = !!expanded[u.id];
     if (wasOpen) {
-      // collapse only
       setExpanded(prev => { const c = { ...prev }; delete c[u.id]; return c; });
       return;
     }
-    // open and load
     setExpanded(prev => ({ ...prev, [u.id]: { loaded: false } }));
     try {
       const d = await mgmtGetUser(u.id);
@@ -168,13 +153,12 @@ function ManagerScreenWeb() {
     const isOpen = !!exp;
     return (
       <View>
-        {/* Unified card: top (avatar+name), middle (email), bottom actions */}
-        <View style={[styles.userCard, styles.shadow, styles.containerNarrow, { backgroundColor: surface2 }]}> 
+        <View style={[styles.userCard, styles.shadow, styles.containerNarrow, { backgroundColor: surface2 }]}>
           <View style={styles.userTopRow}>
             {u.avatarUrl ? (
               <Image source={{ uri: resolveAvatarUrl(u.avatarUrl) }} style={styles.avatar} />
             ) : (
-              <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: tint }]}> 
+              <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: tint }]}>
                 <ThemedText style={styles.avatarInitials}>{initials}</ThemedText>
               </View>
             )}
@@ -184,7 +168,6 @@ function ManagerScreenWeb() {
           </View>
           <ThemedText numberOfLines={1} ellipsizeMode="middle" style={styles.emailText}>{u.email}</ThemedText>
           <View style={styles.actionRow}>
-            {/* Fixed-width actions so both buttons are equal size regardless of label length */}
             <ActionTab
               label={u.role}
               onPress={() => openRolePicker(u)}
@@ -198,7 +181,6 @@ function ManagerScreenWeb() {
               style={{ width: ACTION_W, paddingVertical: Platform.OS === 'web' ? 8 : 6, paddingHorizontal: 10, borderRadius: 10 }}
             />
             <View style={{ flex: 1 }} />
-            {/* Right: remove (match ActionTab look used elsewhere) */}
             {u.role !== 'MANAGER' && user?.id !== u.id && (
               <ActionTab
                 label="Remove"
@@ -211,7 +193,7 @@ function ManagerScreenWeb() {
           </View>
         </View>
         {isOpen && (
-          <View style={[styles.collapseContainer, styles.containerNarrow, styles.shadow, { backgroundColor: surface2 }]}> 
+          <View style={[styles.collapseContainer, styles.containerNarrow, styles.shadow, { backgroundColor: surface2 }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <ThemedText style={{ flex: 1, fontSize: 14, fontWeight: '700', opacity: 0.9 }}>Enrolled Courses</ThemedText>
               <ActionTab
@@ -224,7 +206,7 @@ function ManagerScreenWeb() {
             {!exp?.loaded && (
               <>
                 {[0,1,2].map((i) => (
-                  <View key={`sk-${i}`} style={[styles.courseRow, { borderBottomColor: border }]}> 
+                  <View key={`sk-${i}`} style={[styles.courseRow, { borderBottomColor: border }]}>
                     <View style={[styles.courseThumb, styles.courseThumbFallback, { opacity: 0.4 }]} />
                     <View style={{ flex: 1, height: 14, borderRadius: 6, backgroundColor: '#99999944' }} />
                     <View style={{ width: Platform.OS === 'web' ? 96 : 88, height: 30, borderRadius: 8, backgroundColor: '#f87171', opacity: 0.4 }} />
@@ -233,7 +215,7 @@ function ManagerScreenWeb() {
               </>
             )}
             {detail && detail.enrollments.map(e => (
-              <View key={e.courseId} style={[styles.courseRow, { borderBottomColor: border }]}> 
+              <View key={e.courseId} style={[styles.courseRow, { borderBottomColor: border }]}>
                 {e.course.thumbnailUrl ? (
                   <Image source={{ uri: resolveAvatarUrl(e.course.thumbnailUrl) }} style={styles.courseThumb} />
                 ) : (
@@ -261,8 +243,7 @@ function ManagerScreenWeb() {
 
   return (
     <ThemedView style={{ flex: 1 }}>
-      {/* Top horizontal nav aligned with content container */}
-      <View style={[styles.containerNarrow, { paddingTop: 16 }]}> 
+      <View style={[styles.containerNarrow, { paddingTop: 16 }]}>
         <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
           <ActionTab
             label="Users"
@@ -292,9 +273,15 @@ function ManagerScreenWeb() {
           )}
         </View>
       </View>
-      {/* Content area (web uses conditional lists, no swipe) */}
-      <View style={{ flex: 1 }}>
-        {activePanel === 'users' && (
+
+      {/* Native: PagerView for swipe navigation */}
+      <PagerView style={{ flex: 1 }} initialPage={panels.indexOf(activePanel)} ref={pagerRef}
+        onPageSelected={(e: { nativeEvent: { position: number } }) => {
+          const idx = e.nativeEvent.position;
+          const p = panels[idx];
+          if (p && p !== activePanel) setActivePanel(p);
+        }}>
+        <View key="users">
           <FlatList
             data={users}
             keyExtractor={(u) => String(u.id)}
@@ -302,19 +289,19 @@ function ManagerScreenWeb() {
             refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
             contentContainerStyle={{ paddingBottom: 24, paddingTop: 8, paddingHorizontal: 16 }}
           />
-        )}
-        {activePanel === 'courses' && (
+        </View>
+        <View key="courses">
           <FlatList
             data={managerCourses}
             keyExtractor={(c) => String(c.id)}
             ListHeaderComponent={(
-              <View style={[styles.containerNarrow, { paddingHorizontal: 16, paddingTop: 8, flexDirection:'row', alignItems:'center', justifyContent:'space-between' }]}> 
+              <View style={[styles.containerNarrow, { paddingHorizontal: 16, paddingTop: 8, flexDirection:'row', alignItems:'center', justifyContent:'space-between' }]}>
                 <ThemedText style={styles.countBadge}>All: {managerCourses.length}</ThemedText>
                 <ActionTab label="+ Add New" onPress={() => router.push('/(tabs)/courses/add' as any)} style={{ width: 'auto', paddingVertical: 8, paddingHorizontal: 12 }} />
               </View>
             )}
             renderItem={({ item }: { item: CourseSummary }) => (
-              <View style={[styles.courseCardRow, styles.shadow, styles.containerNarrow, { backgroundColor: surface2, flexDirection:'row', alignItems:'center', gap:12 }]}> 
+              <View style={[styles.courseCardRow, styles.shadow, styles.containerNarrow, { backgroundColor: surface2, flexDirection:'row', alignItems:'center', gap:12 }]}>
                 {item.thumbnailUrl ? (
                   <Image source={{ uri: resolveAvatarUrl(item.thumbnailUrl) }} style={styles.courseThumbLarge} />
                 ) : (
@@ -332,19 +319,19 @@ function ManagerScreenWeb() {
             refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
             contentContainerStyle={{ paddingBottom: 24, paddingTop: 8, paddingHorizontal: 16 }}
           />
-        )}
-        {activePanel === 'categories' && (
+        </View>
+        <View key="categories">
           <FlatList
             data={categories}
             keyExtractor={(c) => String(c.id)}
             ListHeaderComponent={(
-              <View style={[styles.containerNarrow, { paddingHorizontal: 16, paddingTop: 8, flexDirection:'row', alignItems:'center', justifyContent:'space-between' }]}> 
+              <View style={[styles.containerNarrow, { paddingHorizontal: 16, paddingTop: 8, flexDirection:'row', alignItems:'center', justifyContent:'space-between' }]}>
                 <ThemedText style={styles.countBadge}>All: {categories.length}</ThemedText>
                 <ActionTab label="+ Add Category" onPress={() => { setCatName(''); setCatSlug(''); setCatDesc(''); setCatModalOpen({ mode: 'create' }); }} style={{ width: 'auto', paddingVertical: 8, paddingHorizontal: 12 }} />
               </View>
             )}
             renderItem={({ item }) => (
-              <View style={[styles.courseCardRow, styles.shadow, styles.containerNarrow, { backgroundColor: surface2 }]}> 
+              <View style={[styles.courseCardRow, styles.shadow, styles.containerNarrow, { backgroundColor: surface2 }]}>
                 <View style={{ flex: 1, gap: 4 }}>
                   <ThemedText style={styles.courseTitle}>{item.name}</ThemedText>
                   <ThemedText style={{ opacity: 0.7, fontSize: 12 }}>Courses: {item.courseCount ?? 0}</ThemedText>
@@ -358,10 +345,10 @@ function ManagerScreenWeb() {
             refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
             contentContainerStyle={{ paddingBottom: 24, paddingTop: 8, paddingHorizontal: 16 }}
           />
-        )}
-      </View>
+        </View>
+      </PagerView>
 
-      {/* Role picker modal */}
+      {/* Modals (same for all platforms) */}
       <Modal visible={!!rolePickerFor} transparent animationType="fade" onRequestClose={() => setRolePickerFor(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setRolePickerFor(null)}>
           <View style={[styles.modalCard, { backgroundColor: surface }]}>
@@ -375,7 +362,6 @@ function ManagerScreenWeb() {
         </Pressable>
       </Modal>
 
-      {/* Course picker modal */}
       <Modal visible={!!coursePickerFor} transparent animationType="fade" onRequestClose={() => setCoursePickerFor(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setCoursePickerFor(null)}>
           <View style={[styles.modalCard, { backgroundColor: surface }]}>
@@ -398,10 +384,9 @@ function ManagerScreenWeb() {
         </Pressable>
       </Modal>
 
-      {/* Confirm delete user (modal) */}
       <Modal visible={!!deleteUserFor} transparent animationType="fade" onRequestClose={() => setDeleteUserFor(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setDeleteUserFor(null)}>
-          <View style={[styles.modalCard, { backgroundColor: surface }]}> 
+          <View style={[styles.modalCard, { backgroundColor: surface }]}>
             <ThemedText type="subtitle" style={{ marginBottom: 8 }}>Delete user</ThemedText>
             <ThemedText style={{ marginBottom: 12 }}>Are you sure you want to delete {deleteUserFor?.email}? This cannot be undone.</ThemedText>
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
@@ -428,12 +413,11 @@ function ManagerScreenWeb() {
         </Pressable>
       </Modal>
 
-      {/* Confirm unpublish course (modal) */}
       <Modal visible={!!unpublishFor} transparent animationType="fade" onRequestClose={() => setUnpublishFor(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setUnpublishFor(null)}>
-          <View style={[styles.modalCard, { backgroundColor: surface }]}> 
+          <View style={[styles.modalCard, { backgroundColor: surface }]}>
             <ThemedText type="subtitle" style={{ marginBottom: 8 }}>Delete course</ThemedText>
-            <ThemedText style={{ marginBottom: 12 }}>This will permanently delete “{unpublishFor?.title}” and its enrollments. This cannot be undone. Continue?</ThemedText>
+            <ThemedText style={{ marginBottom: 12 }}>This will permanently delete "{unpublishFor?.title}" and its enrollments. This cannot be undone. Continue?</ThemedText>
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
               <ActionTab label="Cancel" onPress={() => setUnpublishFor(null)} style={{ flex: 1, width: undefined, paddingVertical: 8 }} />
               <ActionTab label="Delete" danger onPress={async () => {
@@ -447,18 +431,17 @@ function ManagerScreenWeb() {
         </Pressable>
       </Modal>
 
-      {/* Category create/edit modal */}
       <Modal visible={!!catModalOpen} transparent animationType="fade" onRequestClose={() => setCatModalOpen(null)}>
         <View style={styles.modalBackdrop}>
           <Pressable style={StyleSheet.absoluteFill as any} onPress={() => setCatModalOpen(null)} />
-          <View style={[styles.modalCard, { backgroundColor: surface }]}> 
+          <View style={[styles.modalCard, { backgroundColor: surface }]}>
             <ThemedText type="subtitle" style={{ marginBottom: 8 }}>{catModalOpen?.mode === 'create' ? 'Add Category' : 'Edit Category'}</ThemedText>
             <View style={{ gap: 8 }}>
-              <View style={[styles.field, { borderColor: border }]}> 
+              <View style={[styles.field, { borderColor: border }]}>
                 <ThemedText style={{ opacity: 0.7, fontSize: 12 }}>Name</ThemedText>
                 <TextInput value={catName} onChangeText={setCatName} style={{ paddingVertical: 6, color: textColor }} placeholderTextColor={placeholderColor} />
               </View>
-              <View style={[styles.field, { borderColor: border }]}> 
+              <View style={[styles.field, { borderColor: border }]}>
                 <ThemedText style={{ opacity: 0.7, fontSize: 12 }}>Slug</ThemedText>
                 <TextInput value={catSlug} onChangeText={setCatSlug} placeholder="auto from name if empty" style={{ paddingVertical: 6, color: textColor }} placeholderTextColor={placeholderColor} />
               </View>
