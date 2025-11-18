@@ -19,8 +19,9 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "seed:test-user": "node --loader ts-node/esm ./src/scripts/create-test-user.ts",
-    "seed:courses": "tsx ./src/scripts/seed-courses.ts"
-    ,
+    "seed:courses": "tsx ./src/scripts/seed-courses.ts",
+    "seed:course-details": "tsx ./src/scripts/seed-course-details.ts",
+    "seed:set-brochure-all": "tsx ./src/scripts/set-brochure-all.ts",
     "seed:random-prices": "tsx ./src/scripts/randomize-prices.ts"
   },
   "dependencies": {

@@ -44,7 +44,7 @@ export class CoursesService {
         id: true,
         slug: true,
         title: true,
-        description: true,
+        shortDescription: true,
         thumbnailUrl: true,
         averageRating: true,
         ratingCount: true,
@@ -102,25 +102,105 @@ export class CoursesService {
         slug: true,
         title: true,
         description: true,
+        shortDescription: true,
+        fullDescription: true,
         instructorId: true,
+        instructor: { select: { id: true, name: true, title: true, email: true, avatarUrl: true } },
         thumbnailUrl: true,
         promoUrl: true,
+        previewVideoUrl: true,
+        brochureUrl: true,
         level: true,
         language: true,
+        // subtitleLanguages: true, // hidden for now
         durationSeconds: true,
         isPublished: true,
         isFeatured: true,
         price: true,
         discountPrice: true,
         showPrice: true,
+        currency: true,
+        averageRating: true,
+        ratingCount: true,
+        // labels: true,
+        updatedAt: true,
         categories: { select: { category: { select: { id: true, name: true, slug: true } } } },
+        _count: { select: { enrollments: true } },
+        curriculumSections: {
+          orderBy: { position: 'asc' },
+          select: {
+            id: true,
+            title: true,
+            position: true,
+            totalDurationSeconds: true,
+            lectures: {
+              orderBy: { position: 'asc' },
+              select: { id: true, title: true, position: true, durationSeconds: true }
+            },
+          },
+        },
+        learningOutcomes: {
+          orderBy: { position: 'asc' },
+          select: { id: true, text: true, position: true },
+        },
       },
     });
     if (!course) throw new NotFoundException('Course not found');
-    return {
-      ...course,
-      categories: (course as any).categories ? (course as any).categories.map((cc: any) => cc.category) : undefined,
+    // Normalize + enrich for details view while keeping backward compatibility for callers
+    const categories = (course as any).categories ? (course as any).categories.map((cc: any) => cc.category) : undefined;
+    const studentsCount = (course as any)._count?.enrollments ?? 0;
+    const instructor = (course as any).instructor ?? { id: course.instructorId };
+    const badges = Array.isArray((course as any).labels) ? (course as any).labels : [];
+    const sections = (course as any).curriculumSections?.map((s: any) => {
+      const total = typeof s.totalDurationSeconds === 'number' && s.totalDurationSeconds >= 0
+        ? s.totalDurationSeconds
+        : (s.lectures || []).reduce((acc: number, l: any) => acc + (Number(l?.durationSeconds || 0) || 0), 0);
+      return {
+        id: s.id,
+        title: s.title,
+        position: s.position,
+        lectureCount: (s.lectures || []).length,
+        totalDurationSeconds: total,
+        lectures: (s.lectures || []).map((l: any) => ({ id: l.id, title: l.title, durationSeconds: l.durationSeconds ?? null })),
+      };
+    }) ?? [];
+    const details = {
+      id: course.id,
+      slug: course.slug,
+      title: course.title,
+      // Prefer shortDescription; fallback to legacy description
+      shortDescription: (course as any).shortDescription ?? course.description ?? null,
+      fullDescription: (course as any).fullDescription ?? course.description ?? null,
+      thumbnailUrl: course.thumbnailUrl,
+      previewVideoUrl: (course as any).previewVideoUrl ?? course.promoUrl ?? null,
+      brochureUrl: (course as any).brochureUrl ?? null,
+      language: course.language,
+      // subtitleLanguages: (course as any).subtitleLanguages ?? [],
+      averageRating: course.averageRating ?? null,
+      ratingsCount: course.ratingCount ?? 0,
+      studentsCount,
+      lastUpdatedAt: (course as any).updatedAt,
+      price: course.price,
+      discountPrice: course.discountPrice ?? null,
+      currency: (course as any).currency ?? 'EGP',
+      // labels: badges,
+      categories,
+      instructor: instructor ? {
+        id: instructor.id,
+        name: instructor.name ?? null,
+        title: instructor.title ?? null,
+        avatarUrl: instructor.avatarUrl ?? null,
+        shortBio: null, // TODO: add instructor short bio to User or separate profile
+        stats: null,    // TODO: compute rating, students, courses counts if needed
+      } : null,
+      // Replaced by brochure viewer
+      whatYouWillLearn: undefined,
+      curriculum: undefined,
+      isPublished: course.isPublished,
+      isFeatured: course.isFeatured,
+      showPrice: course.showPrice,
     } as any;
+    return details;
   }
 
   async create(dto: CreateCourseDto, user: { id: number; role: string }) {
@@ -154,16 +234,41 @@ export class CoursesService {
   const nextPosition = total + 1;
 
     const isPublished = dto.isPublished ?? true;
-    const data = {
-      slug: dto.slug,
+    // Generate slug if not provided, ensure uniqueness
+    let slug = (dto.slug || dto.title || '').toString();
+    slug = slug
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    if (!slug) slug = `course-${Date.now()}`;
+    // ensure uniqueness by appending count if needed
+    let finalSlug = slug;
+    let suffix = 1;
+    while (await this.prisma.course.findUnique({ where: { slug: finalSlug } })) {
+      suffix += 1;
+      finalSlug = `${slug}-${suffix}`;
+    }
+
+    const data: any = {
+      slug: finalSlug,
       title: dto.title,
       description: dto.description,
+      shortDescription: dto.shortDescription ?? null,
+      fullDescription: dto.fullDescription ?? null,
       instructorId,
       durationSeconds: dto.durationSeconds,
       level: dto.level,
       language: dto.language,
+      subtitleLanguages: Array.isArray(dto.subtitleLanguages) ? dto.subtitleLanguages : [],
       thumbnailUrl: dto.thumbnailUrl,
       promoUrl: dto.promoUrl ?? null,
+      previewVideoUrl: dto.previewVideoUrl ?? null,
+      brochureUrl: dto.brochureUrl ?? null,
+      labels: Array.isArray(dto.labels) ? dto.labels : [],
+      currency: dto.currency || 'EGP',
       isPublished,
       averageRating: 5,
       ratingCount: 0,
@@ -203,6 +308,17 @@ export class CoursesService {
             skipDuplicates: true,
           });
         }
+      }
+    }
+
+    // Persist learning outcomes (whatYou'llLearn) if provided
+    if (Array.isArray(dto.whatYouWillLearn) && dto.whatYouWillLearn.length > 0) {
+      const clean = dto.whatYouWillLearn.map((t) => (typeof t === 'string' ? t.trim() : '')).filter((t) => t.length > 0);
+      if (clean.length > 0) {
+        await this.prisma.courseLearningOutcome.createMany({
+          data: clean.map((text, idx) => ({ courseId: created.id, text, position: idx + 1 })),
+          skipDuplicates: true,
+        });
       }
     }
 

@@ -13,8 +13,9 @@ export function Skeleton({ width = '100%', height = 14, style }: { width?: numbe
     loop.start();
     return () => { loop.stop(); };
   }, [opacity]);
+  const boxStyle: any = { width: width as any, height, opacity };
   return (
-    <Animated.View style={[styles.box, { width, height, opacity }, style]} />
+    <Animated.View style={[styles.box, boxStyle, style]} />
   );
 }
 

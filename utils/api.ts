@@ -118,6 +118,14 @@ export async function uploadCourseThumbnail(form: FormData): Promise<{ url: stri
   } as any);
 }
 
+export async function uploadCourseBrochure(form: FormData): Promise<{ url: string }> {
+  return api('/courses/brochure', {
+    method: 'POST',
+    auth: true,
+    body: form,
+  } as any);
+}
+
 // Auth: password flows
 export async function forgotPassword(email: string) {
   return api('/auth/forgot-password', {
@@ -230,4 +238,10 @@ export async function mgmtReorderCategories(ids: number[]) {
 // Public categories list
 export async function listCategories(): Promise<Category[]> {
   return api('/categories', { method: 'GET' } as any);
+}
+
+// Course details helper
+import type { CourseDetails } from '@/types/course';
+export async function getCourseDetails(slug: string): Promise<CourseDetails> {
+  return api(`/courses/${slug}`, { method: 'GET' } as any);
 }

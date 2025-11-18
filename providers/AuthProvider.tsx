@@ -8,6 +8,7 @@ export type User = {
   id: number;
   email: string;
   name?: string | null;
+  title?: string | null;
   role: string;
   isEmailVerified?: boolean;
   createdAt?: string;
@@ -101,7 +102,7 @@ interface AuthContextValue {
   loading: boolean;
   initializing: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (payload: { email: string; password: string; name?: string }) => Promise<'verify' | 'ok'>;
+  signUp: (payload: { email: string; password: string; name?: string; title?: string }) => Promise<'verify' | 'ok'>;
   signOut: () => Promise<void>;
   refreshMe: () => Promise<void>;
   googleSignIn: (idToken: string) => Promise<void>;
@@ -182,7 +183,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const signUp = useCallback(async (payload: { email: string; password: string; name?: string }): Promise<'verify' | 'ok'> => {
+  const signUp = useCallback(async (payload: { email: string; password: string; name?: string; title?: string }): Promise<'verify' | 'ok'> => {
     setLoading(true);
     try {
       // returns created user (no tokens) per backend

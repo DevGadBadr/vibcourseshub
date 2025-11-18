@@ -1,7 +1,8 @@
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { ActionTab } from '@/components/ui/action-tab';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { api, API_URL, Category, listCategories, ManagedUser, mgmtListUsers, uploadCourseThumbnail } from '@/utils/api';
+import { api, API_URL, Category, listCategories, ManagedUser, mgmtListUsers, uploadCourseBrochure, uploadCourseThumbnail } from '@/utils/api';
 import { showToast } from '@/utils/toast';
 import { useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
@@ -14,10 +15,18 @@ export default function CourseAddScreen() {
   const placeholderColor = useThemeColor({}, 'muted');
   const textColor = useThemeColor({}, 'text');
   const [title, setTitle] = useState('');
-  const [slug, setSlug] = useState('');
+  // Slug is generated automatically on server
   const TITLE_MAX = 60;
   const titleRemaining = Math.max(0, TITLE_MAX - title.length);
   const [description, setDescription] = useState('');
+  // Extended fields
+  const [shortDescription, setShortDescription] = useState('');
+  const [fullDescription, setFullDescription] = useState('');
+  const [previewVideoUrl, setPreviewVideoUrl] = useState('');
+  // Brochure (PDF)
+  const [brochureUrl, setBrochureUrl] = useState('');
+  const [currency, setCurrency] = useState('EGP');
+  // Removed whatYouWillLearn; replaced by brochure
   const [instructorEmail, setInstructorEmail] = useState('');
   const [selectedInstructors, setSelectedInstructors] = useState<ManagedUser[]>([]);
   const [instructorPickerOpen, setInstructorPickerOpen] = useState(false);
@@ -36,15 +45,21 @@ export default function CourseAddScreen() {
   const [price, setPrice] = useState<string>('');
   const [discountPrice, setDiscountPrice] = useState<string>('');
 
-  const canSave = useMemo(() => title.length > 3 && slug.length > 3 && selectedInstructors.length > 0, [title, slug, selectedInstructors]);
+  const canSave = useMemo(() => title.length > 3 && selectedInstructors.length > 0, [title, selectedInstructors]);
   const isWeb = Platform.OS === 'web';
 
   // Reset to a fresh form whenever this screen gains focus (e.g., after saving and returning).
   useFocusEffect(
     useCallback(() => {
       setTitle('');
-      setSlug('');
+      // slug removed (auto-generated)
       setDescription('');
+      setShortDescription('');
+      setFullDescription('');
+      setPreviewVideoUrl('');
+      setBrochureUrl('');
+      setCurrency('EGP');
+      // no outcomes input
       setInstructorEmail('');
       setSelectedInstructors([]);
       setInstructorPickerOpen(false);
@@ -127,22 +142,27 @@ export default function CourseAddScreen() {
     try {
       const priceNumber = showPrice ? (price.trim() ? Number(price) : 0) : 0;
       const discountNumber = showPrice && discountPrice.trim() ? Number(discountPrice) : null;
+      // no labels/subtitles/outcomes now
       await api('/courses', {
         method: 'POST',
         auth: true,
         body: JSON.stringify({
           title,
-          slug,
           description,
+          shortDescription: shortDescription || undefined,
+          fullDescription: fullDescription || undefined,
           instructorId: selectedInstructors[0]?.id,
           instructorsIds: selectedInstructors.map(u => u.id),
           instructorEmail, // legacy fallback
           thumbnailUrl,
+          previewVideoUrl: previewVideoUrl || undefined,
+          brochureUrl: brochureUrl || undefined,
           categoriesIds: selectedCategories.map(c => c.id),
           // Pricing
           showPrice,
           price: priceNumber,
           discountPrice: discountNumber,
+          currency,
         }),
       } as any);
       showToast('Course added');
@@ -165,12 +185,8 @@ export default function CourseAddScreen() {
                 <Image source={{ uri: resolveAvatarUrl(thumbnailUrl) }} contentFit="contain" style={{ width: '100%', aspectRatio: 375/253, borderRadius: 8, marginBottom: 10, backgroundColor: '#eee' }} />
               )}
               <ThemedText style={styles.title}>{title || 'Untitled course'}</ThemedText>
-              <ThemedText style={styles.meta}>
-                {selectedInstructors.length > 0
-                  ? selectedInstructors.map(u => u.name || u.email).join(', ')
-                  : 'instructor@example.com'}
-              </ThemedText>
-              <ThemedText style={styles.desc}>{description || 'No description'}</ThemedText>
+              {!!shortDescription && <ThemedText style={styles.meta}>{shortDescription}</ThemedText>}
+              {!!fullDescription && <ThemedText style={styles.desc}>{fullDescription.slice(0, 140)}{fullDescription.length > 140 ? '…' : ''}</ThemedText>}
             </View>
             <View style={styles.row}>
               <Pressable style={[styles.btn, styles.secondary]} onPress={() => setPreview(false)}><ThemedText>Back</ThemedText></Pressable>
@@ -186,7 +202,7 @@ export default function CourseAddScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.centered}>
         <View style={styles.formContainer}>
-          <ThemedText type="title" style={{paddingTop: isWeb ? 0 : 40,fontSize: 24}}>Add Course</ThemedText>
+          <ThemedText type="title" style={{paddingTop: isWeb ? 0 : 40,fontSize: 24}}>Add New Course</ThemedText>
           <ThemedView style={[styles.field, { borderColor, flexDirection: 'row', alignItems: 'center' }]}>
             <TextInput
               placeholder="Title"
@@ -198,7 +214,7 @@ export default function CourseAddScreen() {
             />
             <ThemedText style={{ opacity: 0.6, fontSize: 12 }}>{titleRemaining}</ThemedText>
           </ThemedView>
-          <ThemedView style={[styles.field, { borderColor }]}><TextInput placeholder="Slug (course-url)" placeholderTextColor={placeholderColor} value={slug} autoCapitalize="none" onChangeText={setSlug} style={[styles.input as any, { color: textColor }]} /></ThemedView>
+          {/* Slug removed - auto-generated on server */}
           <Pressable onPress={openInstructorPicker} style={[styles.field, { borderColor, justifyContent: 'center', minHeight: 44 }]}>
             {selectedInstructors.length === 0 ? (
               <ThemedText style={{ color: placeholderColor }}>Select instructors</ThemedText>
@@ -236,14 +252,41 @@ export default function CourseAddScreen() {
               </View>
             )}
           </Pressable>
-          <ThemedView style={[styles.field, { height: 120, borderColor }]}><TextInput placeholder="Description" placeholderTextColor={placeholderColor} value={description} onChangeText={setDescription} multiline style={[styles.input as any, { height: '100%', color: textColor }]} /></ThemedView>
+          <ThemedView style={[styles.field, { height: 90, borderColor }]}><TextInput placeholder="Short description" placeholderTextColor={placeholderColor} value={shortDescription} onChangeText={setShortDescription} multiline style={[styles.input as any, { height: '100%', color: textColor }]} /></ThemedView>
+          <ThemedView style={[styles.field, { height: 140, borderColor }]}><TextInput placeholder="Full description" placeholderTextColor={placeholderColor} value={fullDescription} onChangeText={setFullDescription} multiline style={[styles.input as any, { height: '100%', color: textColor }]} /></ThemedView>
+          <ThemedView style={[styles.field, { height: 90, borderColor }]}><TextInput placeholder="Legacy description (optional)" placeholderTextColor={placeholderColor} value={description} onChangeText={setDescription} multiline style={[styles.input as any, { height: '100%', color: textColor }]} /></ThemedView>
+          <ThemedView style={[styles.field, { borderColor }]}><TextInput placeholder="Preview video URL (optional)" placeholderTextColor={placeholderColor} value={previewVideoUrl} onChangeText={setPreviewVideoUrl} autoCapitalize="none" style={[styles.input as any, { color: textColor }]} /></ThemedView>
+          <ThemedView style={[styles.field, { borderColor }]}>
+            <TextInput placeholder="Brochure PDF URL (optional)" placeholderTextColor={placeholderColor} value={brochureUrl} onChangeText={setBrochureUrl} autoCapitalize="none" style={[styles.input as any, { color: textColor }]} />
+            {Platform.OS === 'web' && (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <Pressable style={[styles.btn, styles.secondary]} onPress={async () => {
+                  try {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'application/pdf';
+                    input.onchange = async () => {
+                      const file = input.files && input.files[0];
+                      if (!file) return;
+                      const form = new FormData();
+                      form.append('brochure', file);
+                      const { url } = await uploadCourseBrochure(form);
+                      setBrochureUrl(url);
+                    };
+                    input.click();
+                  } catch (e: any) {
+                    Alert.alert('Upload failed', e?.message || 'Could not upload PDF');
+                  }
+                }}>
+                  <ThemedText>Upload brochure…</ThemedText>
+                </Pressable>
+              </View>
+            )}
+          </ThemedView>
+          <ThemedView style={[styles.field, { borderColor }]}><TextInput placeholder="Currency (e.g. EGP, USD)" placeholderTextColor={placeholderColor} value={currency} onChangeText={setCurrency} autoCapitalize="characters" style={[styles.input as any, { color: textColor }]} /></ThemedView>
+          {/* What you'll learn removed; using brochure PDF instead */}
           {/* Pricing */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Pressable onPress={() => setShowPrice((v) => !v)} style={[styles.btn, showPrice ? styles.primary : styles.secondary]}>
-              <ThemedText style={showPrice ? (styles.btnText as any) : undefined}>{showPrice ? 'Show Price: ON' : 'Show Price: OFF'}</ThemedText>
-            </Pressable>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-end' }}>
             <ThemedView style={[styles.field, { flex: 1, borderColor, opacity: showPrice ? 1 : 0.5 }]}>
               <ThemedText style={{ opacity: 0.7, fontSize: 12 }}>Price (USD)</ThemedText>
               <TextInput
@@ -270,6 +313,9 @@ export default function CourseAddScreen() {
                 style={{ paddingVertical: 6, color: textColor }}
               />
             </ThemedView>
+            <View style={{ width: 120 }}>
+              <ActionTab size="sm" label={showPrice ? 'Price ON' : 'Price OFF'} onPress={() => setShowPrice(v => !v)} />
+            </View>
           </View>
           <ThemedView style={[styles.field, { borderColor }]}>
             <TextInput placeholder="Thumbnail URL (optional)" placeholderTextColor={placeholderColor} value={thumbnailUrl} autoCapitalize="none" onChangeText={setThumbnailUrl} style={[styles.input as any, { color: textColor }]} />
@@ -302,7 +348,7 @@ export default function CourseAddScreen() {
           <View style={styles.row}>
             <Pressable style={[styles.btn, styles.secondary]} onPress={() => router.replace('/(tabs)/explore' as any)}><ThemedText>Cancel</ThemedText></Pressable>
             <Pressable style={[styles.btn, styles.secondary]} onPress={() => setPreview(true)}><ThemedText>Preview</ThemedText></Pressable>
-            <Pressable style={[styles.btn, styles.primary]} disabled={!canSave || saving} onPress={onSave}><ThemedText style={styles.btnText as any}>Save</ThemedText></Pressable>
+            <Pressable style={[styles.btn, styles.primary]} disabled={!canSave || saving} onPress={onSave}><ThemedText style={styles.btnText as any}>Publish</ThemedText></Pressable>
           </View>
         </View>
       </View>

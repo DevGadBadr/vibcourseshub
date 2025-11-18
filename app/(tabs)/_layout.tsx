@@ -115,6 +115,8 @@ export default function TabLayout() {
       {/* Hidden auxiliary routes under tabs: add/edit course (not visible in tab bar) */}
       <Tabs.Screen name="courses/add" options={{ href: null, headerShown: Platform.OS === 'web', header: Platform.OS === 'web' ? () => <WebHeader /> : undefined }} />
       <Tabs.Screen name="courses/[slug]/edit" options={{ href: null, headerShown: Platform.OS === 'web', header: Platform.OS === 'web' ? () => <WebHeader /> : undefined }} />
+      {/* Hide details route from the tab bar completely */}
+      <Tabs.Screen name="courses/[slug]/index" options={{ href: null }} />
       <Tabs.Screen
         name="index"
         options={{

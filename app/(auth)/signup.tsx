@@ -9,6 +9,7 @@ export default function SignupScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const onSubmit = async () => {
@@ -24,7 +25,7 @@ export default function SignupScreen() {
       return;
     }
     try {
-      await signUp({ email: email.trim(), password, name: name.trim() || undefined });
+      await signUp({ email: email.trim(), password, name: name.trim() || undefined, title: title.trim() || undefined } as any);
     } catch (e: any) {
       setError(e.message || 'Signup failed');
     }
@@ -54,6 +55,12 @@ export default function SignupScreen() {
         placeholder="Name (optional)"
         value={name}
         onChangeText={setName}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Title (e.g., Senior Instructor)"
+        value={title}
+        onChangeText={setTitle}
       />
       <Pressable disabled={loading} onPress={onSubmit} style={[styles.button, loading && { opacity: 0.6 }] }>
         <Text style={styles.buttonText}>{loading ? 'Loading...' : 'Sign up'}</Text>

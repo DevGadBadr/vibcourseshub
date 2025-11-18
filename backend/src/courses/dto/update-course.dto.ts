@@ -17,6 +17,23 @@ export class UpdateCourseDto {
   @IsString()
   description?: string;
 
+  // Extended fields
+  @IsOptional()
+  @IsString()
+  shortDescription?: string;
+
+  @IsOptional()
+  @IsString()
+  fullDescription?: string;
+
+  @IsOptional()
+  @IsUrl()
+  previewVideoUrl?: string | null;
+
+  @IsOptional()
+  @IsUrl()
+  brochureUrl?: string | null;
+
   @IsOptional()
   @IsInt()
   instructorId?: number;
@@ -67,4 +84,8 @@ export class UpdateCourseDto {
   @IsOptional()
   @IsBoolean()
   showPrice?: boolean;
+
+  @IsOptional()
+  @IsString()
+  currency?: string;
 }

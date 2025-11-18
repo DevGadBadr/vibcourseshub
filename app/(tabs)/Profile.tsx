@@ -164,7 +164,7 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.headerInfo}>
                 <ThemedText type="title" style={styles.name}>{user?.name || 'Unnamed User'}</ThemedText>
-                <ThemedText style={styles.email}>{user?.email}</ThemedText>
+                {!!user?.title && <ThemedText style={styles.email}>{user?.title}</ThemedText>}
                 <View style={styles.badgeRow}>
                   <View style={[styles.badge, { backgroundColor: neutralBg }]}> 
                     <ThemedText style={styles.badgeText}>{user?.role || 'TRAINEE'}</ThemedText>

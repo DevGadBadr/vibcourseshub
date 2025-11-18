@@ -1,9 +1,9 @@
 import {
-  IsEmail,
-  IsEnum,
-  IsOptional,
-  IsString,
-  MinLength,
+    IsEmail,
+    IsEnum,
+    IsOptional,
+    IsString,
+    MinLength,
 } from 'class-validator';
 
 export enum AllowedSignupRole {
@@ -23,6 +23,10 @@ export class SignupDto {
   @IsOptional()
   @IsString()
   name?: string;
+
+  @IsOptional()
+  @IsString()
+  title?: string;
 
   // optional: allow selecting role for the very first bootstrap;
   // later you should restrict this to admins only.

@@ -13,12 +13,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import { Animated, Easing, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 // Lazy import DnD libraries per platform to keep bundles slim
 const DNDK: any = Platform.OS === 'web' ? { core: require('@dnd-kit/core'), sortable: require('@dnd-kit/sortable') } : null;
 const DraggableFlatList: any = Platform.OS !== 'web' ? require('react-native-draggable-flatlist').default : null;
 
 type ListResponse = { data: Course[]; nextCursor: number | null };
+
+// simple in-memory cache for course list between tab visits
+let EXPLORE_CACHE: { key: string; data: Course[]; categories: Category[]; timestamp: number } | null = null;
 
 export default function ExploreScreen() {
   const { width } = useWindowDimensions();
@@ -41,7 +44,18 @@ export default function ExploreScreen() {
   const [sideOpen, setSideOpen] = useState(false);
   const [allInstructors, setAllInstructors] = useState<any[]>([]);
 
-  const load = useCallback(async () => {
+  const buildKey = () => `${filterCategories.join(',')}|${filterInstructorId ?? ''}`;
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async (opts?: { force?: boolean }) => {
+    const force = !!opts?.force;
+    const key = buildKey();
+    if (!force && EXPLORE_CACHE && EXPLORE_CACHE.key === key && EXPLORE_CACHE.data.length) {
+      setItems(EXPLORE_CACHE.data);
+      if (categories.length === 0 && EXPLORE_CACHE.categories?.length) setCategories(EXPLORE_CACHE.categories);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const params: string[] = [];
@@ -50,6 +64,7 @@ export default function ExploreScreen() {
       const qs = params.length ? `?${params.join('&')}` : '';
       const res = await api<ListResponse>(`/courses${qs}`);
       setItems(res.data);
+      EXPLORE_CACHE = { key, data: res.data, categories, timestamp: Date.now() };
       if (categories.length === 0) {
         try { const cats = await listCategories(); setCategories(cats); } catch {}
       }
@@ -69,12 +84,22 @@ export default function ExploreScreen() {
   useEffect(() => { load(); }, [load]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try { await load({ force: true }); } finally { setRefreshing(false); }
+  }, [load]);
+
   if (!useGrid) {
     // Mobile: compact filters and horizontally scrollable categories; no reorder
     return (
       <ThemedView style={{ flex: 1 }}>
         {/* Title + compact filter buttons */}
-          <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+          <ScrollView
+            contentContainerStyle={{ paddingBottom: 24 }}
+            refreshControl={Platform.OS !== 'web' ? (
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            ) : undefined}
+          >
             <View style={{ paddingHorizontal: 0, paddingTop: topPad }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16 }}>
                 <Pressable onPress={() => setSideOpen(true)} style={{ padding: 6, borderRadius: 8 }}>
@@ -129,7 +154,13 @@ export default function ExploreScreen() {
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
                     {group.items.map((item) => (
                       <View key={item.id} style={{ width: 260 }}>
-                        <CourseCard course={item} size="compact" isAdmin={user?.role === 'ADMIN' || user?.role === 'MANAGER'} onEdit={(c) => router.push({ pathname: '/(tabs)/courses/[slug]/edit' as any, params: { slug: c.slug } } as any)} />
+                        <CourseCard
+                          course={item}
+                          size="compact"
+                          isAdmin={user?.role === 'ADMIN' || user?.role === 'MANAGER'}
+                          onEdit={(c) => router.push({ pathname: '/(tabs)/courses/[slug]/edit' as any, params: { slug: c.slug } } as any)}
+                          onPress={(c) => router.push({ pathname: `/courses/${c.slug}` } as any)}
+                        />
                       </View>
                     ))}
                   </ScrollView>
@@ -286,6 +317,7 @@ export default function ExploreScreen() {
                   gap={gap}
                   isAdmin={user?.role === 'ADMIN' || user?.role === 'MANAGER'}
                   onEdit={(c) => router.push({ pathname: '/(tabs)/courses/[slug]/edit' as any, params: { slug: c.slug } } as any)}
+                  onPress={(c) => router.push({ pathname: `/courses/${c.slug}` } as any)}
                 />
               </View>
             ));
@@ -362,7 +394,7 @@ function WebSortableGrid({ columns, items, cardWidth, gap = 16, onReorder }: Sor
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -(gap / 2) }}>
           {items.map((c) => (
             <WebSortableItem key={c.id} id={String(c.id)} columns={columns} cardWidth={cardWidth} gap={gap}>
-              <CourseCard course={c} size="compact" isAdmin={true} />
+              <CourseCard course={c} size="compact" isAdmin={true} onPress={(cc) => router.push({ pathname: `/courses/${cc.slug}` } as any)} />
             </WebSortableItem>
           ))}
         </View>
@@ -433,7 +465,7 @@ function WebSortableGridCategory({ cat, courses, onReorder }: { cat: Category; c
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={ids} strategy={rectSortingStrategy}>
           <View style={{ flexDirection:'row', flexWrap:'wrap', gap:16 }}>
-            {courses.map(c => <WebCourseSortableItem key={c.id} id={String(c.id)}><CourseCard course={c} size="compact" isAdmin /></WebCourseSortableItem>)}
+            {courses.map(c => <WebCourseSortableItem key={c.id} id={String(c.id)}><CourseCard course={c} size="compact" isAdmin onPress={(cc) => router.push({ pathname: `/courses/${cc.slug}` } as any)} /></WebCourseSortableItem>)}
           </View>
         </SortableContext>
       </DndContext>

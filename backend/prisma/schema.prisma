@@ -42,6 +42,7 @@ model User {
   role         UserRole @default(TRAINEE)
 
   name      String?
+  title     String?
   avatarUrl String?
   locale    String?
   timezone  String?
@@ -116,24 +117,39 @@ model Course {
   id           Int     @id @default(autoincrement())
   slug         String  @unique
   title        String
+  // Legacy description field
   description  String?
+  // Short summary used on cards and details header
+  shortDescription String?
+  // Full course description (markdown or rich text serialized)
+  fullDescription  String?
   instructorId Int
   instructor   User    @relation("CourseInstructor", fields: [instructorId], references: [id])
 
   durationSeconds Int?
   level           CourseLevel?
   language        String?
+  // Supported subtitle languages for the course content (empty array if none)
+  subtitleLanguages String[] @default([])
   thumbnailUrl    String?
   promoUrl        String?
+  // Optional separate preview url (if different from promoUrl)
+  previewVideoUrl String?
   contentLinks    Json?
+  // Course brochure PDF url
+  brochureUrl     String?
 
   averageRating Decimal? @db.Decimal(3, 2)
   ratingCount   Int      @default(0)
+  // Marketplace badges/labels, e.g. "Bestseller", "Highest rated" (empty array if none)
+  labels        String[] @default([])
 
   // Pricing
   price         Float    @default(0)
   discountPrice Float?
   showPrice     Boolean  @default(true)
+  // Currency code for pricing display (e.g., "EGP")
+  currency      String? @default("EGP")
 
   isPublished Boolean   @default(false)
   publishedAt DateTime?
@@ -152,6 +168,12 @@ model Course {
 
   // Categories (many-to-many via explicit join table)
   categories CourseCategory[]
+
+  // Learning outcomes ("What you'll learn")
+  learningOutcomes CourseLearningOutcome[]
+
+  // Curriculum sections (accordion in details page)
+  curriculumSections CourseCurriculumSection[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -233,4 +255,55 @@ model CourseCategory {
 
   @@id([courseId, categoryId])
   @@index([categoryId])
+}
+
+// "What you'll learn" bullet items
+model CourseLearningOutcome {
+  id        Int    @id @default(autoincrement())
+  courseId  Int
+  course    Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  text      String
+  position  Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([courseId])
+  @@index([courseId, position])
+}
+
+// Curriculum sections for a course
+model CourseCurriculumSection {
+  id         Int    @id @default(autoincrement())
+  courseId   Int
+  course     Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title      String
+  position   Int    @default(0)
+  // Optional cached total duration in seconds (sum of lectures)
+  totalDurationSeconds Int?
+
+  lectures   CourseLecture[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([courseId])
+  @@index([courseId, position])
+}
+
+// Individual lecture within a section
+model CourseLecture {
+  id         Int    @id @default(autoincrement())
+  sectionId  Int
+  section    CourseCurriculumSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  title      String
+  position   Int    @default(0)
+  durationSeconds Int?
+  previewUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sectionId])
+  @@index([sectionId, position])
 }

@@ -17,13 +17,48 @@ export class CreateCourseDto {
   @MinLength(4)
   title!: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(4)
-  slug!: string;
+  slug?: string;
 
   @IsOptional()
   @IsString()
   description?: string;
+
+  // New extended fields
+  @IsOptional()
+  @IsString()
+  shortDescription?: string;
+
+  @IsOptional()
+  @IsString()
+  fullDescription?: string;
+
+  @IsOptional()
+  @IsUrl()
+  previewVideoUrl?: string;
+
+  @IsOptional()
+  @IsUrl()
+  brochureUrl?: string;
+
+  @IsOptional()
+  @IsArray()
+  subtitleLanguages?: string[];
+
+  @IsOptional()
+  @IsArray()
+  labels?: string[];
+
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
+  // Incoming simple array of learning outcome texts ("What you'll learn")
+  @IsOptional()
+  @IsArray()
+  whatYouWillLearn?: string[];
 
   @IsOptional()
   @IsInt()

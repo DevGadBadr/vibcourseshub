@@ -65,7 +65,7 @@ export const CourseCard: React.FC<Props> = ({ course, onPress, onEdit, size = 'r
         <View style={s.titleWrap}>
           <ThemedText numberOfLines={2} style={s.title}>{course.title}</ThemedText>
         </View>
-        <ThemedText style={s.instructor} numberOfLines={1}>{course.instructor?.name ?? course.instructor?.email ?? '—'}</ThemedText>
+        <ThemedText style={s.instructor} numberOfLines={2}>{(course as any).shortDescription ?? (course.instructor?.name ?? course.instructor?.email ?? '—')}</ThemedText>
         <View style={s.ratingRow}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: size === 'compact' ? 3 : 4 }}>
             {renderStarsToken(Number(course.averageRating ?? 5), warning, border)}
