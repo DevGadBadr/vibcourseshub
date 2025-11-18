@@ -100,11 +100,12 @@ export default function TabLayout() {
     <>
     <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} translucent={false} />
     <View style={{ flex: 1 }} collapsable={false}>
+    {Platform.OS === 'web' && <WebHeader />}
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.tint,
         tabBarInactiveTintColor: colors.icon,
-        tabBarStyle: {
+        tabBarStyle: Platform.OS === 'web' ? { display: 'none' } : {
           backgroundColor: colors.surface2,
           borderTopColor: colors.border,
         },
@@ -113,8 +114,8 @@ export default function TabLayout() {
         tabBarButton: HapticTab,
       }}>
       {/* Hidden auxiliary routes under tabs: add/edit course (not visible in tab bar) */}
-      <Tabs.Screen name="courses/add" options={{ href: null, headerShown: Platform.OS === 'web', header: Platform.OS === 'web' ? () => <WebHeader /> : undefined }} />
-      <Tabs.Screen name="courses/[slug]/edit" options={{ href: null, headerShown: Platform.OS === 'web', header: Platform.OS === 'web' ? () => <WebHeader /> : undefined }} />
+      <Tabs.Screen name="courses/add" options={{ href: null }} />
+      <Tabs.Screen name="courses/[slug]/edit" options={{ href: null }} />
       {/* Hide details route from the tab bar completely */}
       <Tabs.Screen name="courses/[slug]/index" options={{ href: null }} />
       <Tabs.Screen
@@ -129,8 +130,6 @@ export default function TabLayout() {
         options={{
           title: 'Explore',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="sparkles" color={color} />,
-          headerShown: Platform.OS === 'web',
-          header: Platform.OS === 'web' ? () => <WebHeader /> : undefined,
         }}
       />
       {/* Always declare manager/index so we can explicitly hide it for non-managers */}

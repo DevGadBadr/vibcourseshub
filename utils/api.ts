@@ -245,3 +245,21 @@ import type { CourseDetails } from '@/types/course';
 export async function getCourseDetails(slug: string): Promise<CourseDetails> {
   return api(`/courses/${slug}`, { method: 'GET' } as any);
 }
+
+// Location detection
+export async function getUserLocation(): Promise<{ country: 'EG' | 'INTL' }> {
+  return api('/auth/location', { method: 'GET' } as any);
+}
+
+// Payments: unified checkout
+export async function paymentsCheckout(payload: { courseId: number; enrollType: 'RECORDED' | 'ONLINE'; selectedStartDate?: string }): Promise<{ checkoutUrl: string; paymentId: number; providerOrderId?: string }> {
+  return api('/payments/checkout', { method: 'POST', auth: true, body: JSON.stringify(payload) } as any);
+}
+
+// Payments: verify after redirect
+export async function paymentsVerify(params: { sessionId?: string; paymentId?: number }): Promise<{ status: string; enrollment?: any }> {
+  const qs = new URLSearchParams();
+  if (params.sessionId) qs.set('sessionId', params.sessionId);
+  if (params.paymentId) qs.set('paymentId', String(params.paymentId));
+  return api(`/payments/verify?${qs.toString()}`, { method: 'GET', auth: true } as any);
+}

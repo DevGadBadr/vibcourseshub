@@ -120,6 +120,11 @@ export class CoursesService {
         discountPrice: true,
         showPrice: true,
         currency: true,
+        // Multi enrollment pricing
+        priceRecordedEgp: true,
+        priceRecordedUsd: true,
+        priceOnlineEgp: true,
+        priceOnlineUsd: true,
         averageRating: true,
         ratingCount: true,
         // labels: true,
@@ -183,6 +188,10 @@ export class CoursesService {
       price: course.price,
       discountPrice: course.discountPrice ?? null,
       currency: (course as any).currency ?? 'EGP',
+      priceRecordedEgp: (course as any).priceRecordedEgp ?? null,
+      priceRecordedUsd: (course as any).priceRecordedUsd ?? null,
+      priceOnlineEgp: (course as any).priceOnlineEgp ?? null,
+      priceOnlineUsd: (course as any).priceOnlineUsd ?? null,
       // labels: badges,
       categories,
       instructor: instructor ? {

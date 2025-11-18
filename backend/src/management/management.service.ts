@@ -129,7 +129,14 @@ export class ManagementService {
 
   async removeEnrollment(userId: number, courseId: number, requestorRole?: string) {
     this.ensureManagerOrAdmin(requestorRole);
-    await this.prisma.enrollment.delete({ where: { userId_courseId: { userId, courseId } } });
+    // With multi enrollment types, default to RECORDED if not specified elsewhere
+    // Attempt delete both types gracefully
+    try {
+      await this.prisma.enrollment.delete({ where: { userId_courseId_enrollType: { userId, courseId, enrollType: 'RECORDED' } } });
+    } catch {}
+    try {
+      await this.prisma.enrollment.delete({ where: { userId_courseId_enrollType: { userId, courseId, enrollType: 'ONLINE' } } });
+    } catch {}
     return { ok: true };
   }
 }

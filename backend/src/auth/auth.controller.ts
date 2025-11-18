@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { existsSync, mkdirSync } from 'fs';
+import geoip from 'geoip-lite';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import { GetUser } from '../common/decorators/get-user.decorator';
@@ -141,5 +142,22 @@ export class AuthController {
   @HttpCode(200)
   async changePassword(@GetUser() user: any, @Body() dto: ChangePasswordDto) {
     return this.authService.changePassword(user.sub, dto.currentPassword, dto.newPassword);
+  }
+
+  // ===== Location detection (EG vs International) =====
+  @Get('location')
+  async detectLocation(@Req() req: any, @Ip() ip: string) {
+    // Prefer X-Forwarded-For if behind proxy/CDN
+    const rawIp = (req.headers['x-forwarded-for'] || ip || '').toString().split(',')[0].trim();
+    let countryCode: string | null = null;
+    try {
+      if (rawIp) {
+        const lookup = geoip.lookup(rawIp);
+        countryCode = lookup?.country || null;
+      }
+    } catch {}
+    // Fallback: treat unknown as International (INTL)
+    const isEg = countryCode === 'EG';
+    return { country: isEg ? 'EG' : 'INTL' };
   }
 }

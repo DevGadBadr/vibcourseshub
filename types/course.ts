@@ -48,6 +48,11 @@ export type CourseDetails = {
   discountPrice?: number | null;
   currency?: string;
   showPrice?: boolean;
+  // Multi enrollment pricing
+  priceRecordedEgp?: number | null;
+  priceRecordedUsd?: number | null;
+  priceOnlineEgp?: number | null;
+  priceOnlineUsd?: number | null;
   categories?: { id: number; name: string; slug: string }[];
   instructor?: CourseInstructorInfo | null;
   // whatYouWillLearn?: string[];

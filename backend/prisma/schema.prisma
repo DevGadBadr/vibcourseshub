@@ -77,6 +77,8 @@ model User {
 
   // ✅ Back relation to Enrollment — MUST match the name used on Enrollment.user
   enrollments Enrollment[] @relation("UserEnrollments")
+  // Payments made by the user
+  payments    Payment[]
 
   // Email verification (new)
   verificationTokenHash      String?
@@ -151,6 +153,14 @@ model Course {
   // Currency code for pricing display (e.g., "EGP")
   currency      String? @default("EGP")
 
+  // === Multi-enrollment pricing (recorded vs online, EGP vs USD) ===
+  // Recorded course prices
+  priceRecordedEgp Float?
+  priceRecordedUsd Float?
+  // Online live sessions prices
+  priceOnlineEgp   Float?
+  priceOnlineUsd   Float?
+
   isPublished Boolean   @default(false)
   publishedAt DateTime?
 
@@ -162,6 +172,8 @@ model Course {
 
   // ✅ Back relation to Enrollment — MUST match the name used on Enrollment.course
   enrollments Enrollment[] @relation("CourseEnrollments")
+  // Payments referencing this course
+  payments    Payment[]
 
   // Additional instructors (many-to-many via join table)
   instructors CourseInstructor[]
@@ -215,6 +227,11 @@ model Enrollment {
   lastAccessAt DateTime?
   notes        String?
 
+  // Enrollment type ("RECORDED" | "ONLINE") — default RECORDED for legacy rows
+  enrollType        String   @default("RECORDED")
+  // Selected start date for ONLINE enrollments
+  selectedStartDate DateTime?
+
   // ✅ Relation names set here…
   user   User   @relation("UserEnrollments", fields: [userId], references: [id])
   course Course @relation("CourseEnrollments", fields: [courseId], references: [id])
@@ -222,9 +239,31 @@ model Enrollment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([userId, courseId])
+  // Allow multiple enrollment types per course per user
+  @@unique([userId, courseId, enrollType])
   @@index([userId, status])
   @@index([courseId, status])
+}
+
+// Payment records for unified checkout flow
+model Payment {
+  id                Int       @id @default(autoincrement())
+  userId            Int
+  courseId          Int
+  enrollType        String    // RECORDED or ONLINE
+  provider          String    // stripe or paymob
+  providerOrderId   String?
+  status            String    // pending | paid | failed
+  amount            Float
+  currency          String    // EGP or USD
+  selectedStartDate DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+  @@index([userId])
+  @@index([courseId])
+  @@index([status])
 }
 
 // Course categories

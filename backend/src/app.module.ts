@@ -9,6 +9,7 @@ import { CategoriesModule } from './categories/categories.module.js';
 import { CoursesModule } from './courses/courses.module.js';
 import { EmailVerificationModule } from './emailVerification/email.module.js';
 import { ManagementModule } from './management/management.module.js';
+import { PaymentsModule } from './payments/payments.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 
 @Module({
@@ -23,6 +24,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
     CoursesModule,
     CategoriesModule,
     ManagementModule,
+    PaymentsModule,
     JwtModule.register({}),
   ],
   controllers: [AppController],

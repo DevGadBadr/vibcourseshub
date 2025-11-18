@@ -18,8 +18,11 @@ const MAPPING = {
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
+  'chevron.left': 'chevron-left',
   'camera.fill': 'camera-alt',
   'book.fill': 'book',
+  'moon.fill': 'dark-mode',
+  'sun.max.fill': 'light-mode',
   // Added for enhanced tabs
   'sparkles': 'auto-awesome',
   'person.crop.circle': 'account-circle',

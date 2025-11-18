@@ -9,10 +9,11 @@ import logoImg from '@/assets/images/logo.avif';
 import { BrochureViewer } from '@/components/course-details/BrochureViewer';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import type { CourseDetails } from '@/types/course';
-import { getCourseDetails } from '@/utils/api';
+import { getCourseDetails, getUserLocation, paymentsCheckout } from '@/utils/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Image, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -57,6 +58,7 @@ export default function CourseDetailsScreen() {
   const tint = useThemeColor({}, 'tint');
   const success = useThemeColor({}, 'success');
   const surface = useThemeColor({}, 'surface');
+  const surface2 = useThemeColor({}, 'surface2');
   const border = useThemeColor({}, 'border');
   const warning = useThemeColor({}, 'warning');
 
@@ -66,8 +68,40 @@ export default function CourseDetailsScreen() {
     if (shouldShow !== showSticky) setShowSticky(shouldShow);
   };
 
-  const handleBuyNow = () => {
-    Alert.alert('TODO', 'Buy flow not implemented yet');
+  const [region, setRegion] = useState<'EG' | 'INTL' | null>(null);
+  const [showRecorded, setShowRecorded] = useState(false);
+  const [showOnline, setShowOnline] = useState(false);
+  const [selectedStartDate, setSelectedStartDate] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try { const loc = await getUserLocation(); setRegion(loc.country); } catch { setRegion('INTL'); }
+    })();
+  }, []);
+
+  const handleCheckout = async (enrollType: 'RECORDED' | 'ONLINE') => {
+    if (!detail) return;
+    if (enrollType === 'ONLINE' && !selectedStartDate) {
+      Alert.alert('Pick a start date');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await paymentsCheckout({ courseId: detail.id, enrollType, selectedStartDate: selectedStartDate || undefined });
+      // Open external checkout URL
+      if (res.checkoutUrl) {
+        if (Platform.OS === 'web') {
+          window.location.href = res.checkoutUrl;
+        } else {
+          Alert.alert('Redirect', 'Opening payment page...', [{ text: 'OK', onPress: () => {} }]);
+        }
+      }
+    } catch (e: any) {
+      Alert.alert('Payment failed', e?.message || 'Unable to start payment');
+    } finally {
+      setSubmitting(false);
+    }
   };
   const handleAddToCart = () => {
     Alert.alert('TODO', 'Add to cart not implemented yet');
@@ -108,6 +142,22 @@ export default function CourseDetailsScreen() {
       <ScrollView ref={scrollRef} onScroll={onScroll} scrollEventThrottle={32} contentContainerStyle={styles.scrollContent}>
         <Animated.View style={[styles.animWrap, { opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0,1], outputRange: [12,0] }) }] }]}> 
           <View style={styles.container}> 
+            {/* Top circular back icon */}
+            <View style={styles.topBackWrap}>
+              <Pressable
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Go back"
+                onPress={() => router.replace('/(tabs)/explore')}
+                style={[
+                  styles.topBackBtn,
+                  Platform.OS === 'web' && styles.topBackBtnWeb,
+                  { backgroundColor: surface, borderColor: border }
+                ]}
+              >
+                <IconSymbol name={'chevron.left'} size={Platform.OS === 'web' ? 28 : 22} color={tint} />
+              </Pressable>
+            </View>
             {/* Web: arrange title/info left and preview right */}
             {Platform.OS === 'web' ? (
               <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}>
@@ -128,9 +178,9 @@ export default function CourseDetailsScreen() {
                 </View>
                 <View style={[styles.previewWrap, { width: 420, flexShrink: 0 }]}> 
                   {previewSrc ? (
-                    <Image source={{ uri: previewSrc }} style={[styles.preview, { aspectRatio: 16/9, ...(Platform.OS === 'web' ? { objectPosition: 'bottom' } : {}) }]} resizeMode="cover" />
+                    <Image source={{ uri: previewSrc }} style={[styles.previewFull]} resizeMode="contain" />
                   ) : (
-                    <View style={[styles.preview, { backgroundColor: '#222', aspectRatio: 16/9 }]} />
+                    <View style={[styles.previewFull, { backgroundColor: '#222' }]} />
                   )}
                 </View>
               </View>
@@ -139,9 +189,9 @@ export default function CourseDetailsScreen() {
               {/* Preview area (mobile stacked) */}
               <View style={styles.previewWrap}> 
                 {previewSrc ? (
-                  <Image source={{ uri: previewSrc }} style={[styles.preview, Platform.OS === 'web' ? { objectPosition: 'bottom' } : {}]} resizeMode="cover" />
+                  <Image source={{ uri: previewSrc }} style={[styles.previewFull]} resizeMode="contain" />
                 ) : (
-                  <View style={[styles.preview, { backgroundColor: '#222' }]} />
+                  <View style={[styles.previewFull, { backgroundColor: '#222' }]} />
                 )}
               </View>
               {/* Title & badges */}
@@ -168,8 +218,43 @@ export default function CourseDetailsScreen() {
             {/* Pricing & actions */}
             {showPrice && (
               <View style={styles.priceActionsWrap} onLayout={(e) => { priceBlockY.current = e.nativeEvent.layout.y; }}>
-                <CoursePriceBlock price={detail.discountPrice != null ? detail.price : detail.price} discountPrice={detail.discountPrice} currency={detail.currency} />
-                <Pressable style={[styles.buyBtn, { backgroundColor: success }]} onPress={handleBuyNow}><ThemedText style={styles.buyBtnText}>Enroll Now</ThemedText></Pressable>
+                {/* Primary buttons for enrollment types */}
+                <View style={{ gap: 10 }}>
+                  <Pressable style={[styles.buyBtn, { backgroundColor: surface2, borderWidth: 1, borderColor: border, borderRadius: 8 }]} onPress={() => setShowRecorded(p => !p)}>
+                    <ThemedText style={[styles.buyBtnText, { color: tint }]}>Buy Recorded Course</ThemedText>
+                  </Pressable>
+                  {showRecorded && (
+                    <View style={{ gap: 12, padding: 12, borderWidth: 1, borderColor: border }}>
+                      <CoursePriceBlock price={region === 'EG' ? (detail as any).priceRecordedEgp : (detail as any).priceRecordedUsd} discountPrice={null} currency={region === 'EG' ? 'EGP' : 'USD'} />
+                      {/* Placeholder: curriculum expansion could go here */}
+                      <Pressable disabled={submitting} style={[styles.buyBtn, { backgroundColor: success, opacity: submitting ? 0.6 : 1 }]} onPress={() => handleCheckout('RECORDED')}>
+                        <ThemedText style={styles.buyBtnText}>{submitting ? 'Processing...' : 'Buy Now'}</ThemedText>
+                      </Pressable>
+                    </View>
+                  )}
+                  <Pressable style={[styles.buyBtn, { backgroundColor: surface2, borderWidth: 1, borderColor: border, borderRadius: 8 }]} onPress={() => setShowOnline(p => !p)}>
+                    <ThemedText style={[styles.buyBtnText, { color: tint }]}>Attend Online Sessions</ThemedText>
+                  </Pressable>
+                  {showOnline && (
+                    <View style={{ gap: 12, padding: 12, borderWidth: 1, borderColor: border }}>
+                      <CoursePriceBlock price={region === 'EG' ? (detail as any).priceOnlineEgp : (detail as any).priceOnlineUsd} discountPrice={null} currency={region === 'EG' ? 'EGP' : 'USD'} />
+                      {/* Available start dates (placeholder list) */}
+                      <View style={{ gap: 8 }}>
+                        {generateStartDates().map(d => (
+                          <Pressable key={d} onPress={() => setSelectedStartDate(d)} style={{ padding: 10, borderWidth: 1, borderColor: selectedStartDate === d ? tint : border }}>
+                            <ThemedText>{new Date(d).toLocaleString()}</ThemedText>
+                          </Pressable>
+                        ))}
+                      </View>
+                      {!!selectedStartDate && (
+                        <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>Selected start: {new Date(selectedStartDate).toLocaleString()}</ThemedText>
+                      )}
+                      <Pressable disabled={submitting} style={[styles.buyBtn, { backgroundColor: success, opacity: submitting ? 0.6 : 1 }]} onPress={() => handleCheckout('ONLINE')}>
+                        <ThemedText style={styles.buyBtnText}>{submitting ? 'Processing...' : 'Register Now'}</ThemedText>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
                 <View style={styles.secondaryRow}> 
                   <Pressable style={[styles.secondaryBtn, { borderColor: border }]} onPress={handleAddToCart}><ThemedText style={styles.secondaryBtnText}>Add to cart</ThemedText></Pressable>
                   <Pressable style={[styles.secondaryBtn, { borderColor: border }]} onPress={handleWishlist}><ThemedText style={styles.secondaryBtnText}>Wishlist</ThemedText></Pressable>
@@ -203,15 +288,16 @@ export default function CourseDetailsScreen() {
               <ContactInfo />
             </View>
             <View>
-              <Pressable onPress={() => router.replace('/(tabs)/explore')} style={{ marginTop: 8 }}>
-                <ThemedText style={{ opacity: 0.8 }}>{'← Back to Explore'}</ThemedText>
+              <Pressable onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })} style={{ marginTop: 8 }}>
+                <ThemedText style={{ opacity: 0.8,textAlign: 'center' }}>{'↑ Go to Top'}</ThemedText>
               </Pressable>
             </View>
-            <View style={{ height: 40 }} />
           </View>
         </Animated.View>
       </ScrollView>
-      <StickyBuyBar visible={showSticky && showPrice} price={detail.discountPrice != null ? detail.discountPrice : detail.price} discountPrice={detail.discountPrice ? detail.price : undefined} currency={detail.currency} onBuyNow={handleBuyNow} />
+      {Platform.OS !== 'web' && (
+        <StickyBuyBar visible={showSticky && showPrice} price={region === 'EG' ? (detail as any).priceRecordedEgp : (detail as any).priceRecordedUsd} discountPrice={undefined} currency={region === 'EG' ? 'EGP' : 'USD'} onBuyNow={() => { setShowRecorded(true); scrollRef.current?.scrollTo({ y: priceBlockY.current - 20, animated: true }); }} />
+      )}
     </ThemedView>
   );
 }
@@ -232,12 +318,18 @@ function renderStars(rating: number, activeColor: string, inactiveColor: string)
   return <View style={{ flexDirection: 'row', alignItems: 'center' }}>{nodes}</View>;
 }
 
+function generateStartDates(): string[] {
+  const now = Date.now();
+  return [7, 14, 21].map(days => new Date(now + days * 86400000).toISOString());
+}
+
 const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 80 },
   loadingWrap: { padding: 16, gap: 12 },
   container: { width: '100%', maxWidth: 1000, alignSelf: 'center', padding: 16, gap: 20 },
-  previewWrap: { borderRadius: 0, overflow: 'hidden', position: 'relative' },
+  previewWrap: { borderRadius: 0, overflow: 'hidden', position: 'relative', width: '100%', aspectRatio: 16/9, backgroundColor: '#111' },
   preview: { width: '100%', aspectRatio: 16/9, backgroundColor: '#111' },
+  previewFull: { width: '100%', height: '100%', backgroundColor: '#111' },
   playOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   triangle: { width: 0, height: 0, borderLeftWidth: 18, borderTopWidth: 12, borderBottomWidth: 12, borderLeftColor: '#fff', borderTopColor: 'transparent', borderBottomColor: 'transparent' },
   title: { fontSize: 24, fontWeight: '700', lineHeight: 30 },
@@ -259,4 +351,9 @@ const styles = StyleSheet.create({
   secondaryBtnText: { fontWeight: '600' },
   animWrap: { flex: 1 },
   starRow: { flexDirection: 'row', gap: 4 },
+  topBackWrap: { marginBottom: 4 },
+  topBackBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start', borderWidth: 1 },
+  topBackArrow: { fontSize: 20, lineHeight: 22, fontWeight: '600', opacity: 0.85 },
+  topBackBtnWeb: { width: 48, height: 48, borderRadius: 24 },
+  topBackArrowWeb: { fontSize: 26, lineHeight: 28 },
 });
