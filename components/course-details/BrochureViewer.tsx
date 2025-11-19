@@ -1,11 +1,11 @@
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { API_URL } from '@/utils/api';
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 const fileSrc = (slug?: string) => (slug ? `${API_URL}/courses/${slug}/brochure/file` : undefined);
-const dataSrc = (slug?: string) => (slug ? `${API_URL}/courses/${slug}/brochure/data` : undefined);
+const viewSrc = (slug?: string) => (slug ? `${API_URL}/courses/${slug}/brochure/view` : undefined);
 const downloadSrc = (slug?: string) => (slug ? `${API_URL}/courses/${slug}/brochure/file?download=1` : undefined);
 
 export const BrochureViewer: React.FC<{ slug?: string; url?: string | null }>
@@ -14,7 +14,7 @@ export const BrochureViewer: React.FC<{ slug?: string; url?: string | null }>
   const surface = useThemeColor({}, 'surface');
   const hasBrochure = !!url;
   const file = hasBrochure ? fileSrc(slug) : undefined;
-  const dataUrl = hasBrochure ? dataSrc(slug) : undefined;
+  const viewUrl = hasBrochure ? viewSrc(slug) : undefined;
   const dl = hasBrochure ? downloadSrc(slug) : undefined;
   if (!file) {
     return (
@@ -24,60 +24,17 @@ export const BrochureViewer: React.FC<{ slug?: string; url?: string | null }>
     );
   }
 
-  // WEB: fetch PDF as blob and render via blob: URL to avoid browser auto-download
-  const [webViewUrl, setWebViewUrl] = useState<string | null>(null);
-  const [webError, setWebError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !dataUrl) return;
-    let active = true;
-    let currentUrl: string | null = null;
-    setWebError(null);
-    setWebViewUrl(null);
-    (async () => {
-      try {
-        const res = await fetch(dataUrl);
-        if (!res.ok) throw new Error('Failed to load brochure data');
-        const json = (await res.json()) as { data?: string };
-        if (!json?.data) throw new Error('Empty brochure data');
-        // Decode base64 to binary string
-        const binaryString = atob(json.data);
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        const blob = new Blob([bytes], { type: 'application/pdf' });
-        if (!active) return;
-        currentUrl = URL.createObjectURL(blob);
-        setWebViewUrl(currentUrl);
-      } catch (e) {
-        console.error('Brochure load error:', e);
-        if (!active) return;
-        setWebError('Unable to preview brochure. You can still download it below.');
-      }
-    })();
-    return () => {
-      active = false;
-      if (currentUrl) URL.revokeObjectURL(currentUrl);
-    };
-  }, [dataUrl]);
-
   if (Platform.OS === 'web') {
     return (
       <View style={{ gap: 8 }}>
         <View style={[styles.frameWrap, { borderColor: border, backgroundColor: surface }]}>
-          {webError ? (
-            <View style={styles.centerFill}>
-              <ThemedText style={{ opacity: 0.8, textAlign: 'center' }}>{webError}</ThemedText>
-            </View>
-          ) : !webViewUrl ? (
+          {!viewUrl ? (
             <View style={styles.centerFill}>
               <ThemedText style={{ opacity: 0.7 }}>Loading brochure…</ThemedText>
             </View>
           ) : (
             <iframe
-              src={webViewUrl}
+              src={viewUrl}
               title="Course brochure"
               style={{ width: '100%', height: '100%', border: 'none' } as any}
             />
