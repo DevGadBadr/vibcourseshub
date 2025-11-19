@@ -16,6 +16,46 @@ export const BrochureViewer: React.FC<{ slug?: string; url?: string | null }>
   const file = hasBrochure ? fileSrc(slug) : undefined;
   const dataUrl = hasBrochure ? dataSrc(slug) : undefined;
   const dl = hasBrochure ? downloadSrc(slug) : undefined;
+  const [webPdfUrl, setWebPdfUrl] = useState<string | null>(null);
+  const [webError, setWebError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !dataUrl) {
+      setWebPdfUrl(null);
+      setWebError(null);
+      return;
+    }
+    let isActive = true;
+    let objectUrl: string | null = null;
+    setWebError(null);
+    setWebPdfUrl(null);
+    (async () => {
+      try {
+        const response = await fetch(dataUrl);
+        if (!response.ok) throw new Error('Failed to fetch brochure data');
+        const json = (await response.json()) as { data?: string };
+        if (!json?.data) throw new Error('No brochure payload returned');
+        const binary = atob(json.data);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        if (!isActive) return;
+        objectUrl = URL.createObjectURL(blob);
+        setWebPdfUrl(objectUrl);
+      } catch (err) {
+        console.error('Failed to load brochure preview', err);
+        if (!isActive) return;
+        setWebError('Unable to preview brochure. You can still download it below.');
+      }
+    })();
+    return () => {
+      isActive = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [dataUrl]);
   if (!file) {
     return (
       <View style={[styles.empty, { borderColor: border, backgroundColor: surface }]}>
@@ -23,45 +63,6 @@ export const BrochureViewer: React.FC<{ slug?: string; url?: string | null }>
       </View>
     );
   }
-
-  // WEB: fetch PDF as blob and render via blob: URL to avoid browser auto-download
-  const [webViewUrl, setWebViewUrl] = useState<string | null>(null);
-  const [webError, setWebError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !dataUrl) return;
-    let active = true;
-    let currentUrl: string | null = null;
-    setWebError(null);
-    setWebViewUrl(null);
-    (async () => {
-      try {
-        const res = await fetch(dataUrl);
-        if (!res.ok) throw new Error('Failed to load brochure data');
-        const json = (await res.json()) as { data?: string };
-        if (!json?.data) throw new Error('Empty brochure data');
-        // Decode base64 to binary string
-        const binaryString = atob(json.data);
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        const blob = new Blob([bytes], { type: 'application/pdf' });
-        if (!active) return;
-        currentUrl = URL.createObjectURL(blob);
-        setWebViewUrl(currentUrl);
-      } catch (e) {
-        console.error('Brochure load error:', e);
-        if (!active) return;
-        setWebError('Unable to preview brochure. You can still download it below.');
-      }
-    })();
-    return () => {
-      active = false;
-      if (currentUrl) URL.revokeObjectURL(currentUrl);
-    };
-  }, [dataUrl]);
 
   if (Platform.OS === 'web') {
     return (
@@ -71,16 +72,18 @@ export const BrochureViewer: React.FC<{ slug?: string; url?: string | null }>
             <View style={styles.centerFill}>
               <ThemedText style={{ opacity: 0.8, textAlign: 'center' }}>{webError}</ThemedText>
             </View>
-          ) : !webViewUrl ? (
+          ) : !webPdfUrl ? (
             <View style={styles.centerFill}>
               <ThemedText style={{ opacity: 0.7 }}>Loading brochure…</ThemedText>
             </View>
           ) : (
-            <iframe
-              src={webViewUrl}
-              title="Course brochure"
-              style={{ width: '100%', height: '100%', border: 'none' } as any}
-            />
+            <object data={webPdfUrl} type="application/pdf" style={{ width: '100%', height: '100%' }}>
+              <iframe
+                src={webPdfUrl}
+                title="Course brochure"
+                style={{ width: '100%', height: '100%', border: 'none' } as any }
+              />
+            </object>
           )}
         </View>
         {dl && (
