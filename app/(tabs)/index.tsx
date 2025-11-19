@@ -3,6 +3,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Course } from '@/types/course';
+import { Colors } from '@/constants/theme';
 import { api } from '@/utils/api';
 import { useFocusEffect } from '@react-navigation/native';
 import { Link, useRouter } from 'expo-router';
@@ -88,7 +89,11 @@ export default function MyCoursesScreen() {
         )}
         {isEmpty && (
           <View style={{ alignSelf: 'center', width: '100%', maxWidth, paddingHorizontal: 16, paddingBottom: 32 }}>
-            <ThemedView style={styles.emptyState}>
+            <ThemedView
+              style={styles.emptyState}
+              lightColor={Colors.light.surface2}
+              darkColor={Colors.dark.surface2}
+            >
               <ThemedText type="subtitle">No courses yet</ThemedText>
               <ThemedText style={styles.emptyText}>Your courses will appear here once you enroll. Browse and buy your first course now!</ThemedText>
               <Link href="/explore" asChild>
@@ -126,7 +131,11 @@ export default function MyCoursesScreen() {
               ))}
             </View>
           ) : error ? <ThemedText style={styles.error}>{error}</ThemedText> : (
-            <ThemedView style={styles.emptyState}>
+            <ThemedView
+              style={styles.emptyState}
+              lightColor={Colors.light.surface2}
+              darkColor={Colors.dark.surface2}
+            >
               <ThemedText type="subtitle">No courses yet</ThemedText>
               <ThemedText style={styles.emptyText}>Your courses will appear here once you enroll. Browse and buy your first course now!</ThemedText>
               <Link href="/explore" asChild>
@@ -174,9 +183,27 @@ const styles = StyleSheet.create({
   error: { color: '#dc2626', marginVertical: 8 },
   list: { paddingBottom: 24 },
   mobileList: { gap: 16 },
-  emptyState: { gap: 14, paddingVertical: 8 },
-  emptyText: { fontSize: 14, lineHeight: 20, opacity: 0.8 },
-  ctaBtn: { alignSelf: 'flex-start', backgroundColor: '#2563eb', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 8 },
+  emptyState: {
+    gap: 16,
+    paddingVertical: 24,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  emptyText: { fontSize: 14, lineHeight: 20, opacity: 0.8, textAlign: 'center', maxWidth: 520 },
+  ctaBtn: {
+    alignSelf: 'center',
+    backgroundColor: '#2563eb',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+  },
   ctaBtnText: { color: 'white', fontWeight: '600', fontSize: 14 },
   row: { marginBottom: 16 },
   gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },

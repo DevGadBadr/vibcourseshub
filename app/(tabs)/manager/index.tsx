@@ -15,7 +15,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { API_URL, ApiError, Category, CourseSummary, deleteCourse, ManagedUser, ManagedUserDetail, mgmtAddEnrollment, mgmtCreateCategory, mgmtDeleteCategory, mgmtDeleteUser, mgmtGetUser, mgmtListCategories, mgmtListCourses, mgmtListUsers, mgmtRemoveEnrollment, mgmtSetUserRole, mgmtUpdateCategory } from '@/utils/api';
 import { showToast } from '@/utils/toast';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Image, Modal, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -43,6 +43,7 @@ export default function ManagerScreen() {
 
 function ManagerScreenWeb() {
   const { user } = useAuth();
+  const { refresh } = useLocalSearchParams<{ refresh?: string }>();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [activePanel, setActivePanel] = useState<'users' | 'courses' | 'categories'>('users');
@@ -56,6 +57,7 @@ function ManagerScreenWeb() {
   const [catName, setCatName] = useState('');
   const [catSlug, setCatSlug] = useState('');
   const [catDesc, setCatDesc] = useState('');
+  const [deleteCategoryFor, setDeleteCategoryFor] = useState<Category | null>(null);
   const [deleteUserFor, setDeleteUserFor] = useState<ManagedUser | null>(null);
   const [unpublishFor, setUnpublishFor] = useState<{ slug: string; title: string } | null>(null);
   const border = useThemeColor({}, 'border');
@@ -94,6 +96,15 @@ function ManagerScreenWeb() {
       load();
     }, [load])
   );
+  
+  // Handle refresh parameter from edit/add screens
+  useEffect(() => {
+    if (refresh === '1') {
+      load();
+      // Clear the refresh parameter
+      router.setParams({ refresh: undefined } as any);
+    }
+  }, [refresh, load]);
 
   // Redirect non-manager users away if they hit this route directly (web deep link/manual URL)
   useEffect(() => {
@@ -262,7 +273,7 @@ function ManagerScreenWeb() {
   return (
     <ThemedView style={{ flex: 1 }}>
       {/* Top horizontal nav aligned with content container */}
-      <View style={[styles.containerNarrow, { paddingTop: 16 }]}> 
+      <View style={[styles.containerNarrow, { paddingTop: 16, paddingHorizontal: 0 }]}> 
         <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
           <ActionTab
             label="Users"
@@ -280,17 +291,6 @@ function ManagerScreenWeb() {
             style={activePanel === 'categories' ? [styles.topTab, styles.topTabActive] : styles.topTab}
           />
         </View>
-        <View style={{ marginTop: 6 }}>
-          {activePanel === 'users' && (
-            <ThemedText style={styles.countBadge}> {users.length} </ThemedText>
-          )}
-          {activePanel === 'courses' && (
-            <ThemedText style={styles.countBadge}> {managerCourses.length} </ThemedText>
-          )}
-          {activePanel === 'categories' && (
-            <ThemedText style={styles.countBadge}> {categories.length} </ThemedText>
-          )}
-        </View>
       </View>
       {/* Content area (web uses conditional lists, no swipe) */}
       <View style={{ flex: 1 }}>
@@ -298,6 +298,11 @@ function ManagerScreenWeb() {
           <FlatList
             data={users}
             keyExtractor={(u) => String(u.id)}
+            ListHeaderComponent={(
+              <View style={[styles.containerNarrow, { paddingHorizontal: 0, paddingTop: 8, paddingLeft: 5, flexDirection:'row', alignItems:'center', justifyContent:'space-between' }]}> 
+                <ThemedText style={styles.countBadge}>All: {users.length}</ThemedText>
+              </View>
+            )}
             renderItem={renderItem}
             refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
             contentContainerStyle={{ paddingBottom: 24, paddingTop: 8, paddingHorizontal: 16 }}
@@ -308,7 +313,7 @@ function ManagerScreenWeb() {
             data={managerCourses}
             keyExtractor={(c) => String(c.id)}
             ListHeaderComponent={(
-              <View style={[styles.containerNarrow, { paddingHorizontal: 16, paddingTop: 8, flexDirection:'row', alignItems:'center', justifyContent:'space-between' }]}> 
+              <View style={[styles.containerNarrow, { paddingHorizontal: 0, paddingTop: 8, paddingLeft: 5, flexDirection:'row', alignItems:'center', justifyContent:'space-between' }]}> 
                 <ThemedText style={styles.countBadge}>All: {managerCourses.length}</ThemedText>
                 <ActionTab label="+ Add New" onPress={() => router.push('/(tabs)/courses/add' as any)} style={{ width: 'auto', paddingVertical: 8, paddingHorizontal: 12 }} />
               </View>
@@ -325,7 +330,7 @@ function ManagerScreenWeb() {
                   <ThemedText numberOfLines={1} style={styles.courseInstructor}>{item.instructor?.name || item.instructor?.email || 'Instructor'}</ThemedText>
                   <ThemedText style={{ fontSize:11, opacity:0.6 }}>Enrolls: {item.enrollCount ?? 0}</ThemedText>
                 </View>
-                <Pressable onPress={() => router.push({ pathname: '/(tabs)/courses/[slug]/edit' as any, params: { slug: item.slug } } as any)} style={styles.iconBtn}><Ionicons name="create-outline" size={20} color={tint} /></Pressable>
+                <Pressable onPress={() => router.push({ pathname: '/(tabs)/courses/[slug]/edit' as any, params: { slug: item.slug, from: 'manager' } } as any)} style={styles.iconBtn}><Ionicons name="create-outline" size={20} color={tint} /></Pressable>
                 <Pressable onPress={() => setUnpublishFor({ slug: item.slug!, title: item.title })} style={[styles.iconBtn, { backgroundColor: danger }]}><Ionicons name="trash-outline" size={20} color="white" /></Pressable>
               </View>
             )}
@@ -338,7 +343,7 @@ function ManagerScreenWeb() {
             data={categories}
             keyExtractor={(c) => String(c.id)}
             ListHeaderComponent={(
-              <View style={[styles.containerNarrow, { paddingHorizontal: 16, paddingTop: 8, flexDirection:'row', alignItems:'center', justifyContent:'space-between' }]}> 
+              <View style={[styles.containerNarrow, { paddingHorizontal: 0, paddingTop: 8, paddingLeft: 5, flexDirection:'row', alignItems:'center', justifyContent:'space-between' }]}> 
                 <ThemedText style={styles.countBadge}>All: {categories.length}</ThemedText>
                 <ActionTab label="+ Add Category" onPress={() => { setCatName(''); setCatSlug(''); setCatDesc(''); setCatModalOpen({ mode: 'create' }); }} style={{ width: 'auto', paddingVertical: 8, paddingHorizontal: 12 }} />
               </View>
@@ -351,7 +356,7 @@ function ManagerScreenWeb() {
                 </View>
                 <View style={styles.courseActionsWrap}>
                   <ActionTab label="Edit" onPress={() => { setCatName(item.name); setCatSlug(item.slug); setCatDesc(item.description || ''); setCatModalOpen({ mode: 'edit', cat: item }); }} style={styles.smallAction} />
-                  <ActionTab label="Remove" danger onPress={async () => { try { await mgmtDeleteCategory(item.id); await load(); } catch { Alert.alert('Failed to delete category'); } }} style={styles.smallAction} />
+                  <ActionTab label="Remove" danger onPress={() => setDeleteCategoryFor(item)} style={styles.smallAction} />
                 </View>
               </View>
             )}
@@ -451,22 +456,47 @@ function ManagerScreenWeb() {
       <Modal visible={!!catModalOpen} transparent animationType="fade" onRequestClose={() => setCatModalOpen(null)}>
         <View style={styles.modalBackdrop}>
           <Pressable style={StyleSheet.absoluteFill as any} onPress={() => setCatModalOpen(null)} />
-          <View style={[styles.modalCard, { backgroundColor: surface }]}> 
-            <ThemedText type="subtitle" style={{ marginBottom: 8 }}>{catModalOpen?.mode === 'create' ? 'Add Category' : 'Edit Category'}</ThemedText>
-            <View style={{ gap: 8 }}>
-              <View style={[styles.field, { borderColor: border }]}> 
-                <ThemedText style={{ opacity: 0.7, fontSize: 12 }}>Name</ThemedText>
-                <TextInput value={catName} onChangeText={setCatName} style={{ paddingVertical: 6, color: textColor }} placeholderTextColor={placeholderColor} />
+          <View style={[styles.modalCard, { backgroundColor: surface, borderColor: border }]}> 
+            <ThemedText type="subtitle" style={{ marginBottom: 16, fontSize: 20, fontWeight: '700' }}>
+              {catModalOpen?.mode === 'create' ? 'Add Category' : 'Edit Category'}
+            </ThemedText>
+            <View style={{ gap: 16 }}>
+              <View style={{ gap: 6 }}>
+                <ThemedText style={{ fontSize: 13, fontWeight: '600', opacity: 0.7 }}>Name</ThemedText>
+                <View style={[styles.inputBox, { backgroundColor: surface2, borderColor: border }]}>
+                  <TextInput 
+                    value={catName} 
+                    onChangeText={setCatName} 
+                    placeholder="Enter category name"
+                    style={{ paddingVertical: 10, paddingHorizontal: 12, color: textColor, fontSize: 15 }} 
+                    placeholderTextColor={placeholderColor} 
+                  />
+                </View>
               </View>
-              <View style={[styles.field, { borderColor: border }]}> 
-                <ThemedText style={{ opacity: 0.7, fontSize: 12 }}>Slug</ThemedText>
-                <TextInput value={catSlug} onChangeText={setCatSlug} placeholder="auto from name if empty" style={{ paddingVertical: 6, color: textColor }} placeholderTextColor={placeholderColor} />
+              <View style={{ gap: 6 }}>
+                <ThemedText style={{ fontSize: 13, fontWeight: '600', opacity: 0.7 }}>Slug</ThemedText>
+                <View style={[styles.inputBox, { backgroundColor: surface2, borderColor: border }]}>
+                  <TextInput 
+                    value={catSlug} 
+                    onChangeText={setCatSlug} 
+                    placeholder="auto from name if empty" 
+                    style={{ paddingVertical: 10, paddingHorizontal: 12, color: textColor, fontSize: 15 }} 
+                    placeholderTextColor={placeholderColor} 
+                  />
+                </View>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
-                <ActionTab label="Cancel" onPress={() => setCatModalOpen(null)} style={{ width: 'auto', paddingVertical: 8, paddingHorizontal: 12 }} />
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8, paddingTop: 16, borderTopWidth: 1, borderTopColor: border }}>
+                <ActionTab label="Cancel" onPress={() => setCatModalOpen(null)} style={{ width: 'auto', paddingVertical: 10, paddingHorizontal: 16 }} />
                 <ActionTab label={catModalOpen?.mode === 'create' ? 'Create' : 'Save'} onPress={async () => {
                   try {
-                    if (!catName.trim()) { Alert.alert('Name is required'); return; }
+                    if (!catName.trim()) { 
+                      if (Platform.OS === 'web') {
+                        showToast('Name is required');
+                      } else {
+                        Alert.alert('Name is required'); 
+                      }
+                      return; 
+                    }
                     if (catModalOpen?.mode === 'create') {
                       await mgmtCreateCategory({ name: catName.trim(), slug: catSlug.trim() || undefined });
                       showToast('Category created');
@@ -476,9 +506,54 @@ function ManagerScreenWeb() {
                     }
                     setCatModalOpen(null);
                     await load();
-                  } catch { Alert.alert('Failed to save category'); }
-                }} style={{ width: 'auto', paddingVertical: 8, paddingHorizontal: 12 }} />
+                  } catch { 
+                    if (Platform.OS === 'web') {
+                      showToast('Failed to save category');
+                    } else {
+                      Alert.alert('Failed to save category'); 
+                    }
+                  }
+                }} style={{ width: 'auto', paddingVertical: 10, paddingHorizontal: 16 }} />
               </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete category confirmation modal */}
+      <Modal visible={!!deleteCategoryFor} transparent animationType="fade" onRequestClose={() => setDeleteCategoryFor(null)}>
+        <View style={styles.modalBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill as any} onPress={() => setDeleteCategoryFor(null)} />
+          <View style={[styles.modalCard, { backgroundColor: surface, borderColor: border }]}>
+            <ThemedText type="subtitle" style={{ marginBottom: 12, fontSize: 20, fontWeight: '700' }}>
+              Delete Category
+            </ThemedText>
+            <ThemedText style={{ fontSize: 15, lineHeight: 22, opacity: 0.85, marginBottom: 20 }}>
+              Are you sure you want to delete <ThemedText style={{ fontWeight: '700' }}>"{deleteCategoryFor?.name}"</ThemedText>?{'\n'}
+              This action cannot be undone.
+            </ThemedText>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: border }}>
+              <ActionTab label="Cancel" onPress={() => setDeleteCategoryFor(null)} style={{ width: 'auto', paddingVertical: 10, paddingHorizontal: 16 }} />
+              <ActionTab 
+                label="Delete" 
+                danger 
+                onPress={async () => {
+                  if (!deleteCategoryFor) return;
+                  try {
+                    await mgmtDeleteCategory(deleteCategoryFor.id);
+                    showToast('Category deleted');
+                    setDeleteCategoryFor(null);
+                    await load();
+                  } catch {
+                    if (Platform.OS === 'web') {
+                      showToast('Failed to delete category');
+                    } else {
+                      Alert.alert('Failed to delete category');
+                    }
+                  }
+                }} 
+                style={{ width: 'auto', paddingVertical: 10, paddingHorizontal: 16 }} 
+              />
             </View>
           </View>
         </View>
@@ -528,7 +603,20 @@ const styles = StyleSheet.create({
   courseThumbSmall: { width: 28, height: 28, borderRadius: 6, backgroundColor: '#ccc', marginRight: 8 },
   courseThumbFallback: { backgroundColor: '#999' },
   modalBackdrop: { flex: 1, backgroundColor: '#00000077', padding: 16, justifyContent: 'flex-end' },
-  modalCard: { maxHeight: '60%', borderRadius: 12, padding: 12 },
+  modalCard: { 
+    maxHeight: '60%', 
+    borderRadius: 16, 
+    padding: 20,
+    borderWidth: 1,
+    ...Platform.select({
+      web: { boxShadow: '0 20px 60px rgba(0,0,0,0.3)' },
+      default: { shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20, elevation: 10 }
+    })
+  } as any,
+  inputBox: {
+    borderRadius: 10,
+    borderWidth: 0,
+  },
   modalRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 },
   collapseContainer: { marginTop: 4, padding: 8, borderRadius: 12 },
   shadow: Platform.select({

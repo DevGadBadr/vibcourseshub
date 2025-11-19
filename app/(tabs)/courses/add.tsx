@@ -7,13 +7,16 @@ import { showToast } from '@/utils/toast';
 import { useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, BackHandler, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 export default function CourseAddScreen() {
   const borderColor = useThemeColor({}, 'border');
   const placeholderColor = useThemeColor({}, 'muted');
   const textColor = useThemeColor({}, 'text');
+  const surface = useThemeColor({}, 'surface');
+  const surface2 = useThemeColor({}, 'surface2');
+  const tint = useThemeColor({}, 'tint');
   const [title, setTitle] = useState('');
   // Slug is generated automatically on server
   const TITLE_MAX = 60;
@@ -166,13 +169,34 @@ export default function CourseAddScreen() {
         }),
       } as any);
       showToast('Course added');
-      router.replace('/(tabs)/explore' as any);
+      // Navigate to manager with refresh flag since courses are added from manager
+      router.replace('/(tabs)/manager?refresh=1' as any);
     } catch (e: any) {
+      if (Platform.OS === 'web') {
+        showToast(e?.message || 'Something went wrong');
+      }
       Alert.alert('Error', e?.message || 'Something went wrong');
     } finally {
       setSaving(false);
     }
   };
+  
+  const handleCancel = () => {
+    // Add course is only accessible from Manager, so always go back there
+    router.replace('/(tabs)/manager' as any);
+  };
+  
+  // Intercept Android hardware back button
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      handleCancel();
+      return true; // Prevent default behavior
+    });
+    
+    return () => backHandler.remove();
+  }, []);
 
   if (preview) {
     return (
@@ -202,6 +226,23 @@ export default function CourseAddScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.centered}>
         <View style={styles.formContainer}>
+          {/* Circular back button - same style as course details */}
+          <View style={styles.topBackWrap}>
+            <Pressable
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+              onPress={handleCancel}
+              style={[
+                styles.topBackBtn,
+                Platform.OS === 'web' && styles.topBackBtnWeb,
+                { backgroundColor: surface, borderColor: borderColor }
+              ]}
+            >
+              <ThemedText style={[styles.topBackArrow, Platform.OS === 'web' && styles.topBackArrowWeb]}>←</ThemedText>
+            </Pressable>
+          </View>
+          
           <ThemedText type="title" style={{paddingTop: isWeb ? 0 : 40,fontSize: 24}}>Add New Course</ThemedText>
           <ThemedView style={[styles.field, { borderColor, flexDirection: 'row', alignItems: 'center' }]}>
             <TextInput
@@ -346,7 +387,7 @@ export default function CourseAddScreen() {
           </ThemedView>
 
           <View style={styles.row}>
-            <Pressable style={[styles.btn, styles.secondary]} onPress={() => router.replace('/(tabs)/explore' as any)}><ThemedText>Cancel</ThemedText></Pressable>
+            <Pressable style={[styles.btn, styles.secondary]} onPress={handleCancel}><ThemedText>Cancel</ThemedText></Pressable>
             <Pressable style={[styles.btn, styles.secondary]} onPress={() => setPreview(true)}><ThemedText>Preview</ThemedText></Pressable>
             <Pressable style={[styles.btn, styles.primary]} disabled={!canSave || saving} onPress={onSave}><ThemedText style={styles.btnText as any}>Publish</ThemedText></Pressable>
           </View>
@@ -354,48 +395,63 @@ export default function CourseAddScreen() {
       </View>
 
       <Modal visible={instructorPickerOpen} transparent animationType="fade" onRequestClose={() => setInstructorPickerOpen(false)}>
-        <View style={styles.modalBackdrop}>
+        <View style={[styles.modalBackdrop, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
           <Pressable style={StyleSheet.absoluteFill as any} onPress={() => setInstructorPickerOpen(false)} />
-          <View style={[styles.modalCard, { backgroundColor: Platform.OS === 'web' ? '#1c1c1c' : '#222' }]}> 
-            <ThemedText type="subtitle" style={{ marginBottom: 8 }}>Select instructor</ThemedText>
-            <ThemedView style={[styles.field, { borderColor, marginBottom: 8 }]}>
+          <View style={[styles.modalCard, { backgroundColor: surface, borderColor: borderColor }]}> 
+            <ThemedText type="subtitle" style={{ marginBottom: 12, fontSize: 18, fontWeight: '700' }}>Select Instructors</ThemedText>
+            <View style={[styles.searchBox, { backgroundColor: surface2, borderColor: borderColor }]}>
               <TextInput
                 placeholder="Search by name or email"
                 placeholderTextColor={placeholderColor}
                 value={instructorQuery}
                 onChangeText={setInstructorQuery}
                 autoCapitalize="none"
-                style={[styles.input as any, { color: textColor }]}
+                style={{ color: textColor, fontSize: 15, paddingVertical: 2 }}
               />
-            </ThemedView>
-            <ScrollView style={{ maxHeight: 360 }}>
+            </View>
+            <ScrollView style={{ maxHeight: 420 }}>
               {instructorsLoading ? (
-                <ThemedText>Loading…</ThemedText>
+                <ThemedText style={{ textAlign: 'center', paddingVertical: 20 }}>Loading…</ThemedText>
               ) : filteredInstructors.length === 0 ? (
-                <ThemedText>No instructors found.</ThemedText>
+                <ThemedText style={{ textAlign: 'center', paddingVertical: 20, opacity: 0.7 }}>No instructors found.</ThemedText>
               ) : (
                 filteredInstructors.map((u) => {
                   const checked = selectedInstructors.some(x => x.id === u.id);
                   return (
-                  <Pressable key={u.id} onPress={() => toggleSelectInstructor(u)} style={styles.instructorRow}>
+                  <Pressable 
+                    key={u.id} 
+                    onPress={() => toggleSelectInstructor(u)} 
+                    style={({ hovered }) => [
+                      styles.pickerItem,
+                      { backgroundColor: hovered ? surface2 : 'transparent' }
+                    ]}
+                  >
                     {u.avatarUrl ? (
                       <Image source={{ uri: resolveAvatarUrl(u.avatarUrl) }} style={styles.avatarSmall} />
                     ) : (
                       <View style={[styles.avatarSmall, { backgroundColor: '#666' }]} />
                     )}
                     <View style={{ flex: 1 }}>
-                      <ThemedText numberOfLines={1} style={{ fontWeight: '600' }}>{u.name || 'Unnamed'}</ThemedText>
-                      <ThemedText numberOfLines={1} style={{ opacity: 0.7 }}>{u.email}</ThemedText>
+                      <ThemedText numberOfLines={1} style={{ fontWeight: '600', fontSize: 15 }}>{u.name || 'Unnamed'}</ThemedText>
+                      <ThemedText numberOfLines={1} style={{ opacity: 0.6, fontSize: 12, marginTop: 2 }}>{u.email}</ThemedText>
                     </View>
-                    <ThemedText style={{ fontWeight: '800', opacity: checked ? 1 : 0.25 }}>{checked ? '✓' : '○'}</ThemedText>
+                    <View style={[styles.checkbox, { borderColor: checked ? tint : borderColor, backgroundColor: checked ? tint : 'transparent' }]}>
+                      {checked && <ThemedText style={{ color: surface, fontSize: 14, fontWeight: '800' }}>✓</ThemedText>}
+                    </View>
                   </Pressable>
                 );
                 })
               )}
             </ScrollView>
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-              <Pressable style={[styles.btn, styles.secondary]} onPress={() => setInstructorPickerOpen(false)}>
-                <ThemedText>Done</ThemedText>
+            <View style={[styles.modalFooter, { borderTopColor: borderColor }]}>
+              <Pressable 
+                style={({ hovered }) => [
+                  styles.doneBtn,
+                  { backgroundColor: hovered ? tint : surface2, borderColor: hovered ? tint : borderColor }
+                ]}
+                onPress={() => setInstructorPickerOpen(false)}
+              >
+                {({ hovered }) => <ThemedText style={[styles.doneBtnText, { color: hovered ? surface : textColor }]}>Done</ThemedText>}
               </Pressable>
             </View>
           </View>
@@ -403,41 +459,56 @@ export default function CourseAddScreen() {
       </Modal>
 
       <Modal visible={categoryPickerOpen} transparent animationType="fade" onRequestClose={() => setCategoryPickerOpen(false)}>
-        <View style={styles.modalBackdrop}>
+        <View style={[styles.modalBackdrop, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
           <Pressable style={StyleSheet.absoluteFill as any} onPress={() => setCategoryPickerOpen(false)} />
-          <View style={[styles.modalCard, { backgroundColor: Platform.OS === 'web' ? '#1c1c1c' : '#222' }]}> 
-            <ThemedText type="subtitle" style={{ marginBottom: 8 }}>Select categories</ThemedText>
-            <ThemedView style={[styles.field, { borderColor, marginBottom: 8 }]}> 
+          <View style={[styles.modalCard, { backgroundColor: surface, borderColor: borderColor }]}> 
+            <ThemedText type="subtitle" style={{ marginBottom: 12, fontSize: 18, fontWeight: '700' }}>Select Categories</ThemedText>
+            <View style={[styles.searchBox, { backgroundColor: surface2, borderColor: borderColor }]}>
               <TextInput
                 placeholder="Search categories"
                 placeholderTextColor={placeholderColor}
                 value={categoryQuery}
                 onChangeText={setCategoryQuery}
                 autoCapitalize="none"
-                style={[styles.input as any, { color: textColor }]}
+                style={{ color: textColor, fontSize: 15, paddingVertical: 2 }}
               />
-            </ThemedView>
-            <ScrollView style={{ maxHeight: 360 }}>
+            </View>
+            <ScrollView style={{ maxHeight: 420 }}>
               {filteredCategories.length === 0 ? (
-                <ThemedText>No categories found.</ThemedText>
+                <ThemedText style={{ textAlign: 'center', paddingVertical: 20, opacity: 0.7 }}>No categories found.</ThemedText>
               ) : (
                 filteredCategories.map((c) => {
                   const checked = selectedCategories.some((x) => x.id === c.id);
                   return (
-                    <Pressable key={c.id} onPress={() => toggleSelectCategory(c)} style={styles.instructorRow}>
+                    <Pressable 
+                      key={c.id} 
+                      onPress={() => toggleSelectCategory(c)} 
+                      style={({ hovered }) => [
+                        styles.pickerItem,
+                        { backgroundColor: hovered ? surface2 : 'transparent' }
+                      ]}
+                    >
                       <View style={{ flex: 1 }}>
-                        <ThemedText numberOfLines={1} style={{ fontWeight: '600' }}>{c.name}</ThemedText>
-                        <ThemedText numberOfLines={1} style={{ opacity: 0.7 }}>{c.slug}</ThemedText>
+                        <ThemedText numberOfLines={1} style={{ fontWeight: '600', fontSize: 15 }}>{c.name}</ThemedText>
+                        <ThemedText numberOfLines={1} style={{ opacity: 0.6, fontSize: 12, marginTop: 2 }}>{c.slug}</ThemedText>
                       </View>
-                      <ThemedText style={{ fontWeight: '800', opacity: checked ? 1 : 0.25 }}>{checked ? '✓' : '○'}</ThemedText>
+                      <View style={[styles.checkbox, { borderColor: checked ? tint : borderColor, backgroundColor: checked ? tint : 'transparent' }]}>
+                        {checked && <ThemedText style={{ color: surface, fontSize: 14, fontWeight: '800' }}>✓</ThemedText>}
+                      </View>
                     </Pressable>
                   );
                 })
               )}
             </ScrollView>
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-              <Pressable style={[styles.btn, styles.secondary]} onPress={() => setCategoryPickerOpen(false)}>
-                <ThemedText>Done</ThemedText>
+            <View style={[styles.modalFooter, { borderTopColor: borderColor }]}>
+              <Pressable 
+                style={({ hovered }) => [
+                  styles.doneBtn,
+                  { backgroundColor: hovered ? tint : surface2, borderColor: hovered ? tint : borderColor }
+                ]}
+                onPress={() => setCategoryPickerOpen(false)}
+              >
+                {({ hovered }) => <ThemedText style={[styles.doneBtnText, { color: hovered ? surface : textColor }]}>Done</ThemedText>}
               </Pressable>
             </View>
           </View>
@@ -462,8 +533,61 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '700' },
   meta: { opacity: 0.7, marginTop: 4 },
   desc: { marginTop: 8 },
-  modalBackdrop: { flex: 1, backgroundColor: '#00000088', padding: 16, justifyContent: 'flex-end' },
-  modalCard: { borderRadius: 12, padding: 12 },
+  modalBackdrop: { flex: 1, padding: 16, justifyContent: 'flex-end' },
+  modalCard: { 
+    borderRadius: 16, 
+    padding: 16, 
+    borderWidth: 1,
+    maxHeight: '70%',
+    ...Platform.select({
+      web: { boxShadow: '0 20px 60px rgba(0,0,0,0.3)' },
+      default: { shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20, elevation: 10 }
+    })
+  } as any,
+  searchBox: {
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    marginBottom: 12
+  },
+  pickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  doneBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    ...Platform.select({
+      web: { transitionDuration: '150ms', transitionProperty: 'background-color, border-color' },
+      default: {}
+    })
+  } as any,
+  doneBtnText: {
+    fontWeight: '600',
+    fontSize: 14,
+  },
   instructorRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
   avatarSmall: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#999', marginRight: 6 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.06)' },
@@ -472,6 +596,11 @@ const styles = StyleSheet.create({
   instructorsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   fieldLabel: { fontWeight: '700', opacity: 0.75, fontSize: 12 },
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, flex: 1 },
+  topBackWrap: { marginBottom: 4 },
+  topBackBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start', borderWidth: 1 },
+  topBackArrow: { fontSize: 20, lineHeight: 22, fontWeight: '600', opacity: 0.85 },
+  topBackBtnWeb: { width: 48, height: 48, borderRadius: 24 },
+  topBackArrowWeb: { fontSize: 26, lineHeight: 28 },
 });
 
 function resolveAvatarUrl(url?: string | null): string | undefined {

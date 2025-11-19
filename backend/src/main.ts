@@ -2,19 +2,13 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import 'dotenv/config';
 import { AppModule } from './app.module';
+import { getCorsOrigins, getServerPort } from './common/config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   // Enable CORS for local web client
   app.enableCors({
-    origin: [
-      'http://localhost:8081',
-      'http://127.0.0.1:8081',
-      'http://devgadbadr.com:8081',
-      'https://devgadbadr.com:8081',
-      'https://localhost:8081',
-      'https://127.0.0.1:8081',
-    ],
+    origin: getCorsOrigins(),
     credentials: true,
   });
   app.useGlobalPipes(
@@ -24,6 +18,6 @@ async function bootstrap() {
       transform: true,
     }),
   );
-  await app.listen(process.env.PORT ?? 3010);
+  await app.listen(getServerPort());
 }
 bootstrap();

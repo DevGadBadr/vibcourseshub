@@ -1,8 +1,18 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
-import nodemailer, { Transporter } from 'nodemailer';
 import { PrismaService } from '../prisma/prisma.service';
+import { getEmailTransporter } from '../common/email.util';
+import {
+  getAppName,
+  getMailFrom,
+  getVerifyEmailUrl,
+} from '../common/config';
+import {
+  VERIFY_MAX_SENDS_PER_HOUR,
+  VERIFY_RESEND_COOLDOWN_SECONDS,
+  VERIFY_TOKEN_TTL_MINUTES,
+} from '../common/constants';
 import { buildVerificationEmail } from './email.templates';
 
 function now() {
@@ -15,54 +25,20 @@ function minutesFromNow(minutes: number) {
 
 @Injectable()
 export class EmailVerificationService {
-  private transporter: Transporter | null = null;
-  private readonly tokenExpiryMinutes = parseInt(
-    process.env.VERIFY_TOKEN_TTL_MINUTES || '15',
-    10,
-  );
-  private readonly resendCooldownSeconds = parseInt(
-    process.env.VERIFY_RESEND_COOLDOWN_SECONDS || '60',
-    10,
-  );
-  private readonly maxSendsPerHour = parseInt(
-    process.env.VERIFY_MAX_SENDS_PER_HOUR || '5',
-    10,
-  );
-
   constructor(
     private readonly prisma: PrismaService,
     @Inject(CACHE_MANAGER) private readonly cache: any,
   ) {}
 
-  private ensureTransporter() {
-    if (this.transporter) return this.transporter;
-    const host = process.env.SMTP_HOST;
-    const port = parseInt(process.env.SMTP_PORT || '587', 10);
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
-    if (!host || !user || !pass) {
-      throw new Error(
-        'SMTP configuration missing. Please set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS',
-      );
-    }
-    this.transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
-      auth: { user, pass },
-    });
-    return this.transporter;
-  }
-
   private async sendVerificationEmail(to: string, link: string) {
-    const appName = process.env.APP_NAME || 'App';
-    const from = process.env.MAIL_FROM || `no-reply@${new URL(link).hostname}`;
+    const appName = getAppName();
+    const from = getMailFrom();
     const { subject, text, html } = buildVerificationEmail({
       appName,
       verifyUrl: link,
-      expiresMinutes: this.tokenExpiryMinutes,
+      expiresMinutes: VERIFY_TOKEN_TTL_MINUTES,
     });
-    const transporter = this.ensureTransporter();
+    const transporter = getEmailTransporter();
     await transporter.sendMail({ from, to, subject, text, html });
   }
 
@@ -83,36 +59,23 @@ export class EmailVerificationService {
       );
     }
     const count = ((await this.cache.get(keyHourly)) as number) || 0;
-    if (count >= this.maxSendsPerHour) {
+    if (count >= VERIFY_MAX_SENDS_PER_HOUR) {
       throw new HttpException(
         'Too many requests. Try again later.',
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
-    await this.cache.set(keyCooldown, 1, this.resendCooldownSeconds * 1000);
+    await this.cache.set(
+      keyCooldown,
+      1,
+      VERIFY_RESEND_COOLDOWN_SECONDS * 1000,
+    );
     await this.cache.set(keyHourly, count + 1, 60 * 60 * 1000);
   }
 
-  private buildVerifyLink(email: string, token: string) {
-    // Prefer explicit VERIFY_EMAIL_URL; otherwise fall back to FRONTEND_URL and append /verify-email.
-    const rawBase =
-      process.env.VERIFY_EMAIL_URL ||
-      process.env.FRONTEND_URL ||
-      'http://devgadbadr.com:3010/verify-email';
-    const url = new URL(rawBase);
-
-    // If the provided base is just the site root ("/"), ensure the path is /verify-email
-    // to avoid sending users to /?email=... which the frontend won’t catch.
-    const normalizedPath = url.pathname?.trim() || '/';
-    const hasExplicitVerifyPath = /\/verify-email\/?$/i.test(normalizedPath);
-    if (!hasExplicitVerifyPath) {
-      // If root or missing verify path, set it explicitly.
-      // Preserve any existing base path if you host under a sub-path.
-      const basePath =
-        normalizedPath === '/' ? '' : normalizedPath.replace(/\/$/, '');
-      url.pathname = `${basePath}/verify-email`;
-    }
-
+  private buildVerifyLink(email: string, token: string): string {
+    const baseUrl = getVerifyEmailUrl();
+    const url = new URL(baseUrl);
     url.searchParams.set('email', email);
     url.searchParams.set('token', token);
     return url.toString();
@@ -131,7 +94,7 @@ export class EmailVerificationService {
       where: { id: user.id },
       data: {
         verificationTokenHash: hash,
-        verificationTokenExpiresAt: minutesFromNow(this.tokenExpiryMinutes),
+        verificationTokenExpiresAt: minutesFromNow(VERIFY_TOKEN_TTL_MINUTES),
       },
     });
 

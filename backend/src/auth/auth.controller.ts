@@ -19,6 +19,10 @@ import geoip from 'geoip-lite';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import { GetUser } from '../common/decorators/get-user.decorator';
+import {
+  ALLOWED_IMAGE_TYPES,
+  FILE_UPLOAD_LIMITS,
+} from '../common/constants';
 import { AuthService } from './auth.service';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { ForgotPasswordDto } from './dto/forgot.dto.js';
@@ -102,11 +106,12 @@ export class AuthController {
         },
       }),
       fileFilter: (req, file, cb) => {
-        const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
-        if (!allowed.includes(file.mimetype)) return cb(new BadRequestException('Invalid image type'), false);
+        if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype as any)) {
+          return cb(new BadRequestException('Invalid image type'), false);
+        }
         cb(null, true);
       },
-      limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+      limits: { fileSize: FILE_UPLOAD_LIMITS.AVATAR_MAX_SIZE },
     }),
   )
   async uploadAvatar(@GetUser() user: any, @UploadedFile() file?: Express.Multer.File) {

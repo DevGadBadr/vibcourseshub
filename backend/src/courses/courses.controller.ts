@@ -1,27 +1,36 @@
 import {
-    BadRequestException,
-    Body,
-    Controller,
-    Delete,
-    Get,
-    NotFoundException,
-    Param,
-    Post,
-    Put,
-    Query,
-    Res,
-    StreamableFile,
-    UploadedFile,
-    UseGuards,
-    UseInterceptors,
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  NotFoundException,
+  Param,
+  Post,
+  Put,
+  Query,
+  Res,
+  StreamableFile,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { createReadStream, existsSync, mkdirSync } from 'fs';
+import { promises as fs } from 'fs';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { GetUser } from '../common/decorators/get-user.decorator.js';
+import {
+  ALLOWED_IMAGE_TYPES,
+  ALLOWED_PDF_TYPES,
+  DEFAULT_PAGINATION_TAKE,
+  FILE_UPLOAD_LIMITS,
+  MAX_PAGINATION_TAKE,
+} from '../common/constants.js';
+import { generateBrochureViewerHtml } from '../common/templates/brochure-viewer.template.js';
 import { CoursesService } from './courses.service.js';
 import { CreateCourseDto } from './dto/create-course.dto.js';
 import { UpdateCourseDto } from './dto/update-course.dto.js';
@@ -32,18 +41,30 @@ export class CoursesController {
 
   @Get()
   async list(
-    @Query('take') take = '20',
+    @Query('take') take = String(DEFAULT_PAGINATION_TAKE),
     @Query('cursor') cursor?: string,
     @Query('categoryIds') categoryIds?: string,
     @Query('instructorId') instructorId?: string,
   ) {
-    const takeNum = Math.min(Math.max(parseInt(take, 10) || 20, 1), 50);
+    const takeNum = Math.min(
+      Math.max(parseInt(take, 10) || DEFAULT_PAGINATION_TAKE, 1),
+      MAX_PAGINATION_TAKE,
+    );
     const categories = (categoryIds || '')
       .split(',')
       .map((s) => parseInt(s.trim(), 10))
       .filter((n) => Number.isInteger(n));
     const instrId = instructorId ? parseInt(instructorId, 10) : undefined;
-    return this.courses.list({ take: takeNum, cursor: cursor ? Number(cursor) : undefined, categoryIds: categories.length ? categories : undefined, instructorId: Number.isInteger(instrId as any) ? (instrId as number) : undefined });
+
+    return this.courses.list({
+      take: takeNum,
+      cursor: cursor ? Number(cursor) : undefined,
+      categoryIds: categories.length > 0 ? categories : undefined,
+      instructorId:
+        instrId !== undefined && Number.isInteger(instrId)
+          ? instrId
+          : undefined,
+    });
   }
 
   // Authenticated: list only courses the signed-in user is actively enrolled in.
@@ -84,11 +105,12 @@ export class CoursesController {
         },
       }),
       fileFilter: (req, file, cb) => {
-        const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
-        if (!allowed.includes(file.mimetype)) return cb(new BadRequestException('Invalid image type'), false);
+        if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype as any)) {
+          return cb(new BadRequestException('Invalid image type'), false);
+        }
         cb(null, true);
       },
-      limits: { fileSize: 3 * 1024 * 1024 }, // 3MB
+      limits: { fileSize: FILE_UPLOAD_LIMITS.THUMBNAIL_MAX_SIZE },
     }),
   )
   async uploadThumbnail(@UploadedFile() file?: Express.Multer.File) {
@@ -116,11 +138,12 @@ export class CoursesController {
         },
       }),
       fileFilter: (req, file, cb) => {
-        const allowed = ['application/pdf'];
-        if (!allowed.includes(file.mimetype)) return cb(new BadRequestException('Invalid file type'), false);
+        if (!ALLOWED_PDF_TYPES.includes(file.mimetype as any)) {
+          return cb(new BadRequestException('Invalid file type'), false);
+        }
         cb(null, true);
       },
-      limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+      limits: { fileSize: FILE_UPLOAD_LIMITS.BROCHURE_MAX_SIZE },
     }),
   )
   async uploadBrochure(@UploadedFile() file?: Express.Multer.File) {
@@ -153,26 +176,27 @@ export class CoursesController {
     return new StreamableFile(createReadStream(filePath));
   }
 
+  // JSON/base64 brochure data endpoint (for inline web viewers without triggering download managers)
+  @Get(':slug/brochure/data')
+  async brochureData(@Param('slug') slug: string) {
+    const detail: any = await this.courses.getBySlug(slug);
+    const rel = detail?.brochureUrl as string | undefined;
+    if (!rel) throw new NotFoundException('No brochure for this course');
+    const filePath = join(process.cwd(), rel.startsWith('/') ? rel.slice(1) : rel);
+    if (!existsSync(filePath)) throw new NotFoundException('Brochure file not found');
+    const { readFile } = await import('fs/promises');
+    const buf = await readFile(filePath);
+    // Return base64 so the client can reconstruct a Blob without the response
+    // being treated as a direct PDF download by browser helpers.
+    return {
+      data: buf.toString('base64'),
+    };
+  }
+
   // HTML viewer with object tag and iframe fallback for better cross-platform support
   @Get(':slug/brochure/view')
   async brochureView(@Param('slug') slug: string, @Res() res: Response) {
-    const html = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Course Brochure</title>
-  <style>
-    html,body{height:100%;margin:0;padding:0;overflow:hidden}
-    #pdf-container,#pdf-fallback{width:100%;height:100%;border:none;display:block}
-  </style>
-</head>
-<body>
-  <object id="pdf-container" data="/courses/${slug}/brochure/file" type="application/pdf" width="100%" height="100%">
-    <iframe id="pdf-fallback" src="/courses/${slug}/brochure/file" width="100%" height="100%"></iframe>
-  </object>
-</body>
-</html>`;
+    const html = generateBrochureViewerHtml(slug);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   }

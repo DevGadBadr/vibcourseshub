@@ -3,28 +3,45 @@ import {
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
+import { DEFAULT_PAGINATION_TAKE } from '../common/constants.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateCourseDto } from './dto/create-course.dto.js';
 import { UpdateCourseDto } from './dto/update-course.dto.js';
 
+interface ListCoursesParams {
+  take?: number;
+  cursor?: number;
+  categoryIds?: number[];
+  instructorId?: number;
+}
+
 @Injectable()
 export class CoursesService {
   constructor(private prisma: PrismaService) {}
-  async list(params: { take?: number; cursor?: number; categoryIds?: number[]; instructorId?: number } | number, cursor?: number) {
-    // Backward compatibility: support legacy signature list(take, cursor)
-    let take: number | undefined;
-    let nextCursor: number | undefined = cursor;
-    let categoryIds: number[] | undefined;
-    let instructorId: number | undefined;
-    if (typeof params === 'number') {
-      take = params;
-    } else {
-      take = params.take;
-      nextCursor = params.cursor;
-      categoryIds = params.categoryIds;
-      instructorId = params.instructorId;
-    }
-    const where: any = { isPublished: true };
+  async list(
+    params: ListCoursesParams | number,
+    legacyCursor?: number,
+  ): Promise<{ data: any[]; nextCursor: number | null }> {
+    // Normalize parameters - support both new object format and legacy number format
+    const normalizedParams: ListCoursesParams =
+      typeof params === 'number'
+        ? { take: params, cursor: legacyCursor }
+        : params;
+
+    const {
+      take = DEFAULT_PAGINATION_TAKE,
+      cursor: nextCursor,
+      categoryIds,
+      instructorId,
+    } = normalizedParams;
+
+    // Build where clause
+    const where: {
+      isPublished: boolean;
+      OR?: Array<{ instructorId: number } | { instructors: { some: { userId: number } } }>;
+      categories?: { some: { categoryId: { in: number[] } } };
+    } = { isPublished: true };
+
     if (instructorId && Number.isInteger(instructorId)) {
       where.OR = [
         { instructorId },
@@ -34,11 +51,15 @@ export class CoursesService {
     if (categoryIds && categoryIds.length > 0) {
       where.categories = { some: { categoryId: { in: categoryIds } } };
     }
+
     const courses = await this.prisma.course.findMany({
       where,
-      // Cast to any to avoid transient Prisma type cache issues while ensuring DB orders by position first
-  orderBy: [{ position: 'asc' }, { publishedAt: 'desc' }, { id: 'desc' }] as any,
-      take: take ?? 20,
+      orderBy: [
+        { position: 'asc' },
+        { publishedAt: 'desc' },
+        { id: 'desc' },
+      ],
+      take,
       ...(nextCursor ? { skip: 1, cursor: { id: nextCursor } } : {}),
       select: {
         id: true,

@@ -11,7 +11,7 @@ import { Course } from '@/types/course';
 import { api, Category, listCategories, mgmtReorderCategories, reorderCourses } from '@/utils/api';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Animated, Easing, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 // Lazy import DnD libraries per platform to keep bundles slim
@@ -23,7 +23,34 @@ type ListResponse = { data: Course[]; nextCursor: number | null };
 // simple in-memory cache for course list between tab visits
 let EXPLORE_CACHE: { key: string; data: Course[]; categories: Category[]; timestamp: number } | null = null;
 
+// Modern themed filter button component
+function FilterButton({ onPress, label, size = 'regular' }: { onPress: () => void; label: string; size?: 'regular' | 'sm' }) {
+  const surface2 = useThemeColor({}, 'surface2');
+  const border = useThemeColor({}, 'border');
+  const text = useThemeColor({}, 'text');
+  
+  const isSmall = size === 'sm';
+  const btnStyle = isSmall ? styles.btnSm : styles.btn;
+  const textStyle = isSmall ? styles.btnTextSm : styles.btnText;
+  
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ hovered }) => [
+        btnStyle,
+        {
+          backgroundColor: hovered ? surface2 : 'transparent',
+          borderColor: hovered ? border : 'transparent',
+        },
+      ]}
+    >
+      <ThemedText style={textStyle}>{label}</ThemedText>
+    </Pressable>
+  );
+}
+
 export default function ExploreScreen() {
+  const { refresh } = useLocalSearchParams<{ refresh?: string }>();
   const { width } = useWindowDimensions();
   const isWeb = Platform.OS === 'web';
   // Top padding is handled globally by Tabs sceneStyle; keep only small local spacing
@@ -83,6 +110,15 @@ export default function ExploreScreen() {
 
   useEffect(() => { load(); }, [load]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
+  
+  // Handle refresh parameter from edit screens
+  useEffect(() => {
+    if (refresh === '1') {
+      load({ force: true });
+      // Clear the refresh parameter
+      router.setParams({ refresh: undefined } as any);
+    }
+  }, [refresh, load]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -108,10 +144,11 @@ export default function ExploreScreen() {
                 <ThemedText style={styles.sectionTitle}>Explore courses</ThemedText>
               </View>
               <View style={{ paddingHorizontal: 16, paddingBottom:16,flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                <Pressable onPress={() => setPickerOpen('categories')} style={[styles.btn, styles.btnSecondary, styles.btnSm]}><ThemedText style={styles.btnTextSm}>{filterCategories.length ? `${filterCategories.length} Categories` : 'Categories'}</ThemedText></Pressable>
-                <Pressable onPress={() => setPickerOpen('instructor')} style={[styles.btn, styles.btnSecondary, styles.btnSm]}><ThemedText style={styles.btnTextSm}>{filterInstructorId ? 'Instructor: Selected' : 'Instructor'}</ThemedText></Pressable>
+                <ThemedText style={{ fontSize: 13, opacity: 0.6, fontWeight: '600' }}>Filters</ThemedText>
+                <FilterButton onPress={() => setPickerOpen('categories')} label={filterCategories.length ? `${filterCategories.length} Categories` : 'Categories'} size="sm" />
+                <FilterButton onPress={() => setPickerOpen('instructor')} label={filterInstructorId ? 'Instructor: Selected' : 'Instructor'} size="sm" />
                 {(filterCategories.length || filterInstructorId) ? (
-                  <Pressable onPress={() => { setFilterCategories([]); setFilterInstructorId(null); }} style={[styles.btn, styles.btnSecondary, styles.btnSm]}><ThemedText style={styles.btnTextSm}>Clear</ThemedText></Pressable>
+                  <FilterButton onPress={() => { setFilterCategories([]); setFilterInstructorId(null); }} label="Clear" size="sm" />
                 ) : null}
               </View>
             </View>
@@ -158,7 +195,7 @@ export default function ExploreScreen() {
                           course={item}
                           size="compact"
                           isAdmin={user?.role === 'ADMIN' || user?.role === 'MANAGER'}
-                          onEdit={(c) => router.push({ pathname: '/(tabs)/courses/[slug]/edit' as any, params: { slug: c.slug } } as any)}
+                          onEdit={(c) => router.push({ pathname: '/(tabs)/courses/[slug]/edit' as any, params: { slug: c.slug, from: 'explore' } } as any)}
                           onPress={(c) => router.push({ pathname: `/courses/${c.slug}` } as any)}
                         />
                       </View>
@@ -269,10 +306,11 @@ export default function ExploreScreen() {
       </View>
       {/* Filters */}
       <View style={{ paddingHorizontal: 16, flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-        <Pressable onPress={() => setPickerOpen('categories')} style={[styles.btn, styles.btnSecondary]}><ThemedText style={styles.btnText}>{filterCategories.length ? `${filterCategories.length} Categories` : 'Categories'}</ThemedText></Pressable>
-        <Pressable onPress={() => setPickerOpen('instructor')} style={[styles.btn, styles.btnSecondary]}><ThemedText style={styles.btnText}>{filterInstructorId ? 'Instructor: Selected' : 'Instructor'}</ThemedText></Pressable>
+        <ThemedText style={{ fontSize: 14, opacity: 0.6, fontWeight: '600', marginRight: 4 }}>Filters</ThemedText>
+        <FilterButton onPress={() => setPickerOpen('categories')} label={filterCategories.length ? `${filterCategories.length} Categories` : 'Categories'} />
+        <FilterButton onPress={() => setPickerOpen('instructor')} label={filterInstructorId ? 'Instructor: Selected' : 'Instructor'} />
         {(filterCategories.length || filterInstructorId) ? (
-          <Pressable onPress={() => { setFilterCategories([]); setFilterInstructorId(null); }} style={[styles.btn, styles.btnSecondary]}><ThemedText style={styles.btnText}>Clear</ThemedText></Pressable>
+          <FilterButton onPress={() => { setFilterCategories([]); setFilterInstructorId(null); }} label="Clear" />
         ) : null}
       </View>
       {!reorderMode && (
@@ -316,7 +354,7 @@ export default function ExploreScreen() {
                   targetCardWidth={targetCardWidth}
                   gap={gap}
                   isAdmin={user?.role === 'ADMIN' || user?.role === 'MANAGER'}
-                  onEdit={(c) => router.push({ pathname: '/(tabs)/courses/[slug]/edit' as any, params: { slug: c.slug } } as any)}
+                  onEdit={(c) => router.push({ pathname: '/(tabs)/courses/[slug]/edit' as any, params: { slug: c.slug, from: 'explore' } } as any)}
                   onPress={(c) => router.push({ pathname: `/courses/${c.slug}` } as any)}
                 />
               </View>
@@ -528,12 +566,32 @@ const styles = StyleSheet.create({
   row: { marginBottom: 16 },
   section: { marginBottom: 24 },
   sectionTitle: { marginBottom: 8, paddingHorizontal: 16, fontSize: 20, fontWeight: '700' },
-  btn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  btn: { 
+    paddingHorizontal: 16, 
+    paddingVertical: 10, 
+    borderRadius: 24, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6,
+    borderWidth: 1.5,
+    ...Platform.select({ 
+      web: { 
+        transitionDuration: '200ms',
+        transitionProperty: 'all',
+      }, 
+      default: {} 
+    })
+  } as any,
   btnPrimary: Platform.select({ web: { boxShadow: '0 6px 16px rgba(0,0,0,0.15)' }, default: { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6, elevation: 3 } }) as any,
-  btnSecondary: { backgroundColor: '#374151' },
-  btnText: { color: 'white', fontWeight: '600', fontSize: 14, letterSpacing: 0.3 },
-  btnSm: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10 },
-  btnTextSm: { color: 'white', fontWeight: '600', fontSize: 12, letterSpacing: 0.2 },
+  btnSecondary: {}, // Will be styled dynamically with theme colors
+  btnText: { fontWeight: '700', fontSize: 14, letterSpacing: 0.4 },
+  btnSm: { 
+    paddingVertical: 8, 
+    paddingHorizontal: 14, 
+    borderRadius: 20,
+    borderWidth: 1.5,
+  },
+  btnTextSm: { fontWeight: '700', fontSize: 12, letterSpacing: 0.3 },
 });
 
 // Small shared picker modal component
@@ -548,55 +606,139 @@ function FilterPickers({ mode, onClose, categories, selectedCategoryIds, onChang
   onChangeInstructor: (id: number | null) => void;
 }) {
   const [q, setQ] = useState('');
-  const borderColor = useThemeColor({}, 'border');
-  const textColor = useThemeColor({}, 'text');
-  const placeholderColor = useThemeColor({}, 'muted');
+  const colorScheme = useColorScheme();
+  const surface = useThemeColor({}, 'surface');
+  const surface2 = useThemeColor({}, 'surface2');
+  const border = useThemeColor({}, 'border');
+  const text = useThemeColor({}, 'text');
+  const muted = useThemeColor({}, 'muted');
+  const tint = useThemeColor({}, 'tint');
+  const overlayBg = colorScheme === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)';
+  
   const filteredCats = categories.filter((c) => !q || c.name.toLowerCase().includes(q.toLowerCase()) || c.slug.toLowerCase().includes(q.toLowerCase()));
   const filteredInstr = instructors.filter((i) => !q || (i.name || '').toLowerCase().includes(q.toLowerCase()) || (i.email || '').toLowerCase().includes(q.toLowerCase()));
+  
   return (
-    <View style={{ position: 'absolute', inset: 0 as any, backgroundColor: '#00000077', padding: 16, justifyContent: 'flex-end' }}>
+    <View style={{ position: 'absolute', inset: 0 as any, backgroundColor: overlayBg, padding: 16, justifyContent: 'flex-end' }}>
       <Pressable style={StyleSheet.absoluteFill as any} onPress={onClose} />
-      <View style={{ borderRadius: 12, padding: 10, backgroundColor: Platform.OS === 'web' ? '#1c1c1c' : '#222', maxHeight: '70%' }}>
-        <ThemedText type="subtitle" style={{ marginBottom: 6, fontSize: 14 }}>{mode === 'categories' ? 'Select categories' : 'Select instructor'}</ThemedText>
-        <ThemedView style={{ padding: 6, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: borderColor, marginBottom: 8 }}>
+      <View style={{ 
+        borderRadius: 16, 
+        padding: 16, 
+        backgroundColor: surface,
+        borderWidth: 1,
+        borderColor: border,
+        maxHeight: '70%',
+        ...Platform.select({
+          web: { boxShadow: '0 20px 60px rgba(0,0,0,0.3)' },
+          default: { shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20, elevation: 10 }
+        })
+      } as any}>
+        <ThemedText type="subtitle" style={{ marginBottom: 12, fontSize: 18, fontWeight: '700' }}>
+          {mode === 'categories' ? 'Select Categories' : 'Select Instructor'}
+        </ThemedText>
+        <View style={{ 
+          padding: 10, 
+          borderRadius: 12, 
+          borderWidth: 1.5, 
+          borderColor: border, 
+          backgroundColor: surface2,
+          marginBottom: 12 
+        }}>
           <TextInput
-            placeholder="Search"
-            placeholderTextColor={placeholderColor}
+            placeholder="Search..."
+            placeholderTextColor={muted}
             value={q}
             onChangeText={setQ}
             autoCapitalize="none"
-            style={{ color: textColor, fontSize: 14, paddingVertical: 4 }}
+            style={{ color: text, fontSize: 15, paddingVertical: 2 }}
           />
-        </ThemedView>
+        </View>
         <ScrollView style={{ maxHeight: 420 }}>
           {mode === 'categories'
             ? filteredCats.map((c) => {
                 const checked = selectedCategoryIds.includes(c.id);
                 return (
-                  <Pressable key={c.id} onPress={() => onChangeCategories(checked ? selectedCategoryIds.filter((id) => id !== c.id) : [...selectedCategoryIds, c.id])} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}>
+                  <Pressable 
+                    key={c.id} 
+                    onPress={() => onChangeCategories(checked ? selectedCategoryIds.filter((id) => id !== c.id) : [...selectedCategoryIds, c.id])} 
+                    style={({ hovered }) => ({ 
+                      flexDirection: 'row', 
+                      alignItems: 'center', 
+                      gap: 12, 
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      borderRadius: 10,
+                      backgroundColor: hovered ? surface2 : 'transparent',
+                    })}
+                  >
                     <View style={{ flex: 1 }}>
-                      <ThemedText style={{ fontWeight: '600', fontSize: 14 }}>{c.name}</ThemedText>
-                      <ThemedText style={{ opacity: 0.7, fontSize: 12 }}>{c.slug}</ThemedText>
+                      <ThemedText style={{ fontWeight: '600', fontSize: 15 }}>{c.name}</ThemedText>
+                      <ThemedText style={{ opacity: 0.6, fontSize: 12, marginTop: 2 }}>{c.slug}</ThemedText>
                     </View>
-                    <ThemedText style={{ fontWeight: '800', opacity: checked ? 1 : 0.25 }}>{checked ? '✓' : '○'}</ThemedText>
+                    <View style={{ 
+                      width: 24, 
+                      height: 24, 
+                      borderRadius: 12, 
+                      borderWidth: 2, 
+                      borderColor: checked ? tint : border,
+                      backgroundColor: checked ? tint : 'transparent',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      {checked && <ThemedText style={{ color: surface, fontSize: 14, fontWeight: '800' }}>✓</ThemedText>}
+                    </View>
                   </Pressable>
                 );
               })
             : filteredInstr.map((i) => {
                 const checked = selectedInstructorId === i.id;
                 return (
-                  <Pressable key={i.id} onPress={() => onChangeInstructor(checked ? null : i.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}>
+                  <Pressable 
+                    key={i.id} 
+                    onPress={() => onChangeInstructor(checked ? null : i.id)} 
+                    style={({ hovered }) => ({ 
+                      flexDirection: 'row', 
+                      alignItems: 'center', 
+                      gap: 12, 
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      borderRadius: 10,
+                      backgroundColor: hovered ? surface2 : 'transparent',
+                    })}
+                  >
                     <View style={{ flex: 1 }}>
-                      <ThemedText style={{ fontWeight: '600', fontSize: 14 }}>{i.name || 'Unnamed'}</ThemedText>
-                      <ThemedText style={{ opacity: 0.7, fontSize: 12 }}>{i.email}</ThemedText>
+                      <ThemedText style={{ fontWeight: '600', fontSize: 15 }}>{i.name || 'Unnamed'}</ThemedText>
+                      <ThemedText style={{ opacity: 0.6, fontSize: 12, marginTop: 2 }}>{i.email}</ThemedText>
                     </View>
-                    <ThemedText style={{ fontWeight: '800', opacity: checked ? 1 : 0.25 }}>{checked ? '✓' : '○'}</ThemedText>
+                    <View style={{ 
+                      width: 24, 
+                      height: 24, 
+                      borderRadius: 12, 
+                      borderWidth: 2, 
+                      borderColor: checked ? tint : border,
+                      backgroundColor: checked ? tint : 'transparent',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      {checked && <ThemedText style={{ color: surface, fontSize: 14, fontWeight: '800' }}>✓</ThemedText>}
+                    </View>
                   </Pressable>
                 );
               })}
         </ScrollView>
-        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
-          <Pressable onPress={onClose} style={[styles.btn, styles.btnSecondary, styles.btnSm]}><ThemedText style={styles.btnTextSm}>Done</ThemedText></Pressable>
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: border }}>
+          <Pressable 
+            onPress={onClose} 
+            style={({ hovered }) => [
+              styles.btnSm, 
+              { 
+                backgroundColor: hovered ? tint : surface2,
+                borderColor: hovered ? tint : border,
+              }
+            ]}
+          >
+            {({ hovered }) => <ThemedText style={[styles.btnTextSm, { color: hovered ? surface : text }]}>Done</ThemedText>}
+          </Pressable>
         </View>
       </View>
     </View>

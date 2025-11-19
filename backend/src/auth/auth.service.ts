@@ -9,20 +9,26 @@ import {
 import { JwtService } from '@nestjs/jwt/dist/index.js';
 import * as argon2 from 'argon2';
 import * as bcrypt from 'bcrypt';
-import { createHash, randomBytes, randomUUID } from 'crypto';
-import 'dotenv/config';
+import { createHash, randomBytes } from 'crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { OAuth2Client } from 'google-auth-library';
-import nodemailer, { Transporter } from 'nodemailer';
 import { join } from 'path';
 import { buildPasswordResetEmail } from '../emailVerification/email.templates.js';
+import { getEmailTransporter } from '../common/email.util.js';
+import {
+    getAppName,
+    getGoogleClientIds,
+    getMailFrom,
+    getResetPasswordUrl,
+} from '../common/config.js';
+import { PASSWORD_SALT_ROUNDS, RESET_TOKEN_TTL_MINUTES } from '../common/constants.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { createUserSession, updateUserLoginStats } from './helpers/session.helper.js';
+import { formatUserResponse } from './helpers/user-response.helper.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RefreshDto } from './dto/refresh.dto.js';
 import { SignupDto } from './dto/signup.dto';
 import { TokensService } from './tokens.service';
-
-const SALT_ROUNDS = 12;
 
 @Injectable()
 export class AuthService {
@@ -32,39 +38,9 @@ export class AuthService {
     private jwt: JwtService,
   ) {}
 
-  // --- email sending (reuse SMTP config) ---
-  private mailer: Transporter | null = null;
-  private ensureMailer(): Transporter {
-    if (this.mailer) return this.mailer;
-    const host = process.env.SMTP_HOST;
-    const port = parseInt(process.env.SMTP_PORT || '587', 10);
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
-    if (!host || !user || !pass) {
-      throw new Error('SMTP configuration missing for password reset emails');
-    }
-    this.mailer = nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
-      auth: { user, pass },
-    });
-    return this.mailer;
-  }
-
-  private buildResetLink(email: string, token: string) {
-    const rawBase =
-      process.env.RESET_PASSWORD_URL ||
-      process.env.FRONTEND_URL ||
-      'http://devgadbadr.com:3010/reset-password';
-    const url = new URL(rawBase);
-    // Ensure path ends with /reset-password if not explicit
-    const normalized = url.pathname?.trim() || '/';
-    const hasReset = /\/reset-password\/?$/i.test(normalized);
-    if (!hasReset) {
-      const basePath = normalized === '/' ? '' : normalized.replace(/\/$/, '');
-      url.pathname = `${basePath}/reset-password`;
-    }
+  private buildResetLink(email: string, token: string): string {
+    const baseUrl = getResetPasswordUrl();
+    const url = new URL(baseUrl);
     url.searchParams.set('email', email);
     url.searchParams.set('token', token);
     return url.toString();
@@ -87,60 +63,24 @@ export class AuthService {
     const user = await this.validateUser(dto.email, dto.password);
     if (!user) throw new ForbiddenException('Invalid credentials');
 
-    const session = await this.prisma.session.create({
-      data: {
+    const { accessToken, refreshToken } = await createUserSession(
+      this.prisma,
+      this.tokens,
+      user,
+      {
         userId: user.id,
-        refreshTokenHash: 'placeholder', // will update after RT is created
-        refreshTokenExp: new Date(
-          Date.now() + this.ms(process.env.JWT_REFRESH_TTL || '14d'),
-        ),
         userAgent: meta?.userAgent,
         ip: meta?.ip,
-        device: dto.device ?? undefined,
-        jti: randomUUID(),
+        device: dto.device,
       },
-    });
+    );
 
-    const accessToken = await this.tokens.signAccess({
-      sub: user.id,
-      sid: session.id,
-      email: user.email,
-      role: user.role,
-    });
-
-    const refreshToken = await this.tokens.signRefresh({
-      sub: user.id,
-      sid: session.id,
-      jti: session.jti || undefined,
-    });
-
-    const refreshTokenHash = await argon2.hash(refreshToken);
-    await this.prisma.session.update({
-      where: { id: session.id },
-      data: { refreshTokenHash },
-    });
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date(), loginCount: { increment: 1 }, isLoggedIn: true },
-    });
+    await updateUserLoginStats(this.prisma, user.id);
 
     return {
       accessToken,
       refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        title: (user as any).title,
-        role: user.role,
-        createdAt: user.createdAt,
-        loginCount: user.loginCount,
-        isEmailVerified: user.isEmailVerified,
-        avatarUrl: user.avatarUrl,
-        provider: user.provider || 'local',
-        googlePicture: user.googlePicture,
-      },
+      user: formatUserResponse(user),
     };
   }
 
@@ -149,11 +89,7 @@ export class AuthService {
     idToken: string,
     meta?: { userAgent?: string; ip?: string },
   ) {
-    const rawIds = process.env.GOOGLE_CLIENT_IDS || process.env.GOOGLE_CLIENT_ID || '';
-    const audiences = rawIds
-      .split(/[,\s]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const audiences = getGoogleClientIds();
     if (!audiences.length) {
       throw new BadRequestException('Google client ID(s) not configured');
     }
@@ -224,7 +160,7 @@ export class AuthService {
       }
       // Create new user
       const randomPwd = randomBytes(24).toString('hex');
-      const passwordHash = await bcrypt.hash(randomPwd, SALT_ROUNDS);
+      const passwordHash = await bcrypt.hash(randomPwd, PASSWORD_SALT_ROUNDS);
       return await tx.user.create({
         data: {
           email,
@@ -268,57 +204,24 @@ export class AuthService {
     }
 
     // Create session and issue tokens (same flow as password login)
-    const session = await this.prisma.session.create({
-      data: {
+    const { accessToken, refreshToken } = await createUserSession(
+      this.prisma,
+      this.tokens,
+      user,
+      {
         userId: user.id,
-        refreshTokenHash: 'placeholder',
-        refreshTokenExp: new Date(
-          Date.now() + this.ms(process.env.JWT_REFRESH_TTL || '14d'),
-        ),
         userAgent: meta?.userAgent,
         ip: meta?.ip,
         device: 'google',
-        jti: randomUUID(),
       },
-    });
+    );
 
-    const accessToken = await this.tokens.signAccess({
-      sub: user.id,
-      sid: session.id,
-      email: user.email,
-      role: user.role,
-    });
-    const refreshToken = await this.tokens.signRefresh({
-      sub: user.id,
-      sid: session.id,
-      jti: session.jti || undefined,
-    });
-    await this.prisma.session.update({
-      where: { id: session.id },
-      data: { refreshTokenHash: await argon2.hash(refreshToken) },
-    });
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date(), loginCount: { increment: 1 }, isLoggedIn: true },
-    });
+    await updateUserLoginStats(this.prisma, user.id);
 
     return {
       accessToken,
       refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        title: (user as any).title,
-        role: user.role,
-        createdAt: user.createdAt,
-        loginCount: user.loginCount,
-        isEmailVerified: user.isEmailVerified,
-        avatarUrl: user.avatarUrl,
-        provider: user.provider || 'google',
-        googlePicture: user.googlePicture,
-      },
+      user: formatUserResponse({ ...user, provider: user.provider || 'google' }),
     };
   }
 
@@ -365,7 +268,7 @@ export class AuthService {
       data: {
         refreshTokenHash: await argon2.hash(newRefreshToken),
         refreshTokenExp: new Date(
-          Date.now() + this.ms(process.env.JWT_REFRESH_TTL || '14d'),
+          Date.now() + this.parseTtlToMs(process.env.JWT_REFRESH_TTL || '14d'),
         ),
       },
     });
@@ -484,12 +387,11 @@ export class AuthService {
         secret: process.env.JWT_REFRESH_SECRET!,
       });
     } catch {
-      return null; // or rethrow if you prefer
+      return null;
     }
   }
 
-  private ms(ttl: string) {
-    // naive parser for "15m", "14d", "3600" (sec)
+  private parseTtlToMs(ttl: string): number {
     const n = Number(ttl);
     if (!Number.isNaN(n)) return n * 1000;
     const m = ttl.match(/^(\d+)([smhd])$/i);
@@ -502,7 +404,7 @@ export class AuthService {
   }
 
   async signup(dto: SignupDto) {
-    const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
+    const passwordHash = await bcrypt.hash(dto.password, PASSWORD_SALT_ROUNDS);
 
     try {
       const user = await this.prisma.user.create({
@@ -537,10 +439,6 @@ export class AuthService {
   }
 
   // ===== Password reset flow =====
-  private resetTtlMinutes() {
-    return parseInt(process.env.RESET_TOKEN_TTL_MINUTES || '15', 10);
-  }
-
   private generateToken(): { token: string; hash: string } {
     const token = randomBytes(32).toString('hex');
     const hash = createHash('sha256').update(token).digest('hex');
@@ -559,31 +457,30 @@ export class AuthService {
       where: { id: user.id },
       data: {
         passwordResetToken: hash, // store hash for security
-        passwordResetExpiresAt: new Date(Date.now() + this.resetTtlMinutes() * 60 * 1000),
+        passwordResetExpiresAt: new Date(
+          Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000,
+        ),
       },
     });
 
     // Fire-and-forget email sending to avoid blocking response
-    // UI can immediately show "Check your email" while email is dispatched.
     setImmediate(() => {
       try {
-        const appName = process.env.APP_NAME || 'App';
+        const appName = getAppName();
         const resetUrl = this.buildResetLink(email, token);
-        const from = process.env.MAIL_FROM || `no-reply@${new URL(resetUrl).hostname}`;
+        const from = getMailFrom();
         const { subject, text, html } = buildPasswordResetEmail({
           appName,
           resetUrl,
-          expiresMinutes: this.resetTtlMinutes(),
+          expiresMinutes: RESET_TOKEN_TTL_MINUTES,
         });
-        const mailer = this.ensureMailer();
+        const mailer = getEmailTransporter();
         mailer
           .sendMail({ from, to: email, subject, text, html })
           .catch((err) => {
-            // Log but do not affect the API response
             console.error('Failed to send reset email:', err?.message || err);
           });
       } catch (err: any) {
-        // Log configuration/runtime errors without failing the request
         console.error('Error scheduling reset email:', err?.message || err);
       }
     });
@@ -606,7 +503,7 @@ export class AuthService {
     if (!newPassword || newPassword.length < 8) {
       throw new BadRequestException('Password must be at least 8 characters.');
     }
-    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    const passwordHash = await bcrypt.hash(newPassword, PASSWORD_SALT_ROUNDS);
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: user.id },
@@ -629,7 +526,7 @@ export class AuthService {
     if (!ok) throw new ForbiddenException('Current password is incorrect.');
     if (!newPassword || newPassword.length < 8)
       throw new BadRequestException('Password must be at least 8 characters.');
-    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    const passwordHash = await bcrypt.hash(newPassword, PASSWORD_SALT_ROUNDS);
     await this.prisma.$transaction([
       this.prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
       this.prisma.session.deleteMany({ where: { userId: user.id } }),

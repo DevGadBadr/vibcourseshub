@@ -280,7 +280,7 @@ export default function CourseDetailsScreen() {
             </View>
             {/* Company Logo */}
             <View style={{ alignItems: 'center', marginTop: 8, marginBottom: -4 }}>
-              <Image source={logoImg as any} style={{ width: 140, height: 48, resizeMode: 'contain' }} />
+              <Image source={logoImg as any} style={{ width: 200, height: 68, resizeMode: 'contain' }} />
             </View>
             {/* Contact / Company Info */}
             <View>

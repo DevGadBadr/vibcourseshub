@@ -1,8 +1,12 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import axios from 'axios';
 import geoip from 'geoip-lite';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service.js';
+import {
+  getPaymentCancelUrl,
+  getPaymentSuccessUrl,
+} from '../common/config.js';
+import { createPaymobOrder } from './helpers/paymob.helper.js';
 
 type Region = 'EG' | 'INTL';
 
@@ -67,13 +71,17 @@ export class PaymentsService {
 
     if (provider === 'stripe') {
       if (!this.stripe) throw new BadRequestException('Stripe not configured');
-      const priceIdEnv = enrollType === 'RECORDED' ? process.env.STRIPE_PRICE_ID_RECORDED_USD : process.env.STRIPE_PRICE_ID_ONLINE_USD;
-      if (!priceIdEnv) throw new BadRequestException('Stripe price ID missing');
-      const successBase = process.env.PAYMENT_SUCCESS_URL || 'https://example.com/payment-success';
-      const cancelBase = process.env.PAYMENT_CANCEL_URL || 'https://example.com/payment-cancel';
+      const priceIdEnv =
+        enrollType === 'RECORDED'
+          ? process.env.STRIPE_PRICE_ID_RECORDED_USD
+          : process.env.STRIPE_PRICE_ID_ONLINE_USD;
+      if (!priceIdEnv)
+        throw new BadRequestException('Stripe price ID missing');
+      const successBase = getPaymentSuccessUrl();
+      const cancelBase = getPaymentCancelUrl();
       const session = await this.stripe.checkout.sessions.create({
         mode: 'payment',
-        line_items: [ { price: priceIdEnv, quantity: 1 } ],
+        line_items: [{ price: priceIdEnv, quantity: 1 }],
         success_url: `${successBase}?sessionId={CHECKOUT_SESSION_ID}`,
         cancel_url: cancelBase,
         metadata: {
@@ -86,41 +94,22 @@ export class PaymentsService {
       checkoutUrl = session.url!;
       providerOrderId = session.id;
     } else {
-      // Paymob integration (simplified)
+      // Paymob integration
       const apiKey = process.env.PAYMOB_API_KEY;
       const integrationId = process.env.PAYMOB_INTEGRATION_ID;
-      const priceConfig = enrollType === 'RECORDED' ? process.env.PAYMOB_PRICE_EGP_RECORDED : process.env.PAYMOB_PRICE_EGP_ONLINE;
-      if (!apiKey || !integrationId || !priceConfig) throw new BadRequestException('Paymob env vars missing');
+      if (!apiKey || !integrationId) {
+        throw new BadRequestException('Paymob configuration missing');
+      }
       try {
-        // Step 1: authenticate
-        const authRes = await axios.post('https://accept.paymob.com/api/auth/tokens', { api_key: apiKey });
-        const token = authRes.data?.token;
-        // Step 2: create order with amount * 100 (cents)
         const amountCents = Math.round(amount * 100);
-        const orderRes = await axios.post('https://accept.paymob.com/api/ecommerce/orders', {
-          auth_token: token,
-          delivery_needed: 'false',
-          amount_cents: amountCents,
-          currency: 'EGP',
-          items: [],
+        const result = await createPaymobOrder({
+          apiKey,
+          integrationId,
+          amountCents,
         });
-        const orderId = orderRes.data?.id;
-        // Step 3: payment key
-        const payRes = await axios.post('https://accept.paymob.com/api/acceptance/payment_keys', {
-          auth_token: token,
-          amount_cents: amountCents,
-          currency: 'EGP',
-          order_id: orderId,
-          integration_id: integrationId,
-          billing_data: {
-            apartment: 'NA', email: 'user@example.com', floor: 'NA', first_name: 'User', street: 'NA', building: 'NA', phone_number: 'NA', shipping_method: 'NA', postal_code: 'NA', city: 'NA', country: 'EG', last_name: 'User', state: 'NA'
-          },
-        });
-        const paymentKey = payRes.data?.token;
-        checkoutUrl = `https://accept.paymob.com/api/acceptance/iframes/${integrationId}?payment_token=${paymentKey}`;
-        providerOrderId = orderId?.toString() || null;
+        checkoutUrl = result.checkoutUrl;
+        providerOrderId = result.orderId;
       } catch (e: any) {
-        this.logger.error('Paymob error', e?.response?.data || e.message);
         throw new BadRequestException('Failed to create Paymob order');
       }
     }
